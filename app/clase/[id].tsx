@@ -70,6 +70,19 @@ export default function PantallaClase() {
     });
   };
 
+  const abrirPantallaAsistencias = () => {
+    router.push({
+      pathname: "/asistencias",
+      params: {
+        id: idClase,
+        nombreClase,
+        escuela,
+        grupo,
+        descripcion,
+      },
+    });
+  };
+
   return (
     <>
       <Stack.Screen
@@ -181,15 +194,15 @@ export default function PantallaClase() {
                 className="w-full flex-row items-center justify-center rounded-xl bg-blue-600 px-5 py-4 active:opacity-70 dark:bg-blue-500"
               >
                 <FontAwesomeIcon icon={faUsers} size={22} color="#ffffff" />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Alumnos
                 </Text>
               </Pressable>
 
               <Pressable
+                onPress={abrirPantallaAsistencias}
                 accessibilityRole="button"
-                accessibilityLabel="Abrir asistencia"
+                accessibilityLabel="Abrir asistencias"
                 className="w-full flex-row items-center justify-center rounded-xl bg-blue-600 px-5 py-4 active:opacity-70 dark:bg-blue-500"
               >
                 <FontAwesomeIcon
@@ -197,9 +210,8 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
-                  Asistencia
+                  Asistencias
                 </Text>
               </Pressable>
 
@@ -213,7 +225,6 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Calificaciones
                 </Text>
@@ -229,7 +240,6 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Exámenes
                 </Text>

@@ -517,6 +517,16 @@ export default function PantallaAlumnos() {
 
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
 
+  const [busquedaAlumno, setBusquedaAlumno] = useState("");
+
+  const busquedaAlumnoNormalizada = normalizarTexto(busquedaAlumno);
+
+  const alumnosFiltrados = busquedaAlumnoNormalizada
+    ? alumnos.filter((alumno) =>
+        normalizarTexto(alumno.nombre).includes(busquedaAlumnoNormalizada),
+      )
+    : alumnos;
+
   const [cargando, setCargando] = useState(true);
 
   const [procesandoOCR, setProcesandoOCR] = useState(false);
@@ -997,7 +1007,6 @@ export default function PantallaAlumnos() {
           const necesitaNormalizarPosiciones = alumnosParaOrdenar.some(
             (alumno, indice) => alumno.posicion !== indice + 1,
           );
-
           if (necesitaNormalizarPosiciones) {
             await ejecutarConTiempoMaximo(
               db.withTransactionAsync(async () => {
@@ -2001,7 +2010,6 @@ export default function PantallaAlumnos() {
             "UPDATE alumnos SET posicion = ? WHERE id = ? AND clase = ?;",
             [alumnoIntercambio.posicion, alumnoActual.id, idClase],
           );
-
           await db.runAsync(
             "UPDATE alumnos SET posicion = ? WHERE id = ? AND clase = ?;",
             [alumnoActual.posicion, alumnoIntercambio.id, idClase],
@@ -2721,6 +2729,10 @@ export default function PantallaAlumnos() {
                 <Text className="mt-2 text-center text-xl font-bold text-black dark:text-white">
                   {nombreClase}
                 </Text>
+
+                <Text className="mt-1 text-center text-base font-semibold text-slate-600 dark:text-slate-300">
+                  Alumnos
+                </Text>
               </View>
 
               {/* Información de la clase */}
@@ -2857,6 +2869,19 @@ export default function PantallaAlumnos() {
                   </Pressable>
                 </View>
 
+                {/* Buscador de alumnos */}
+                <TextInput
+                  value={busquedaAlumno}
+                  onChangeText={setBusquedaAlumno}
+                  placeholder="Buscar alumno..."
+                  placeholderTextColor={modoOscuro ? "#94a3b8" : "#64748b"}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  accessibilityLabel="Buscar alumnos"
+                  className="mb-4 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+
                 {cargando ? null : alumnos.length === 0 ? (
                   <View className="items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 px-5 py-8 dark:border-blue-700 dark:bg-slate-900">
                     <View className="h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-slate-800">
@@ -2873,6 +2898,24 @@ export default function PantallaAlumnos() {
 
                     <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                       No hay alumnos registrados en esta clase.
+                    </Text>
+                  </View>
+                ) : alumnosFiltrados.length === 0 ? (
+                  <View className="items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 px-5 py-8 dark:border-blue-700 dark:bg-slate-900">
+                    <View className="h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-slate-800">
+                      <FontAwesomeIcon
+                        icon={faUsers}
+                        size={30}
+                        color={modoOscuro ? "#60a5fa" : "#2563eb"}
+                      />
+                    </View>
+
+                    <Text className="mt-4 text-center text-xl font-bold text-black dark:text-white">
+                      Sin resultados
+                    </Text>
+
+                    <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+                      No se encontraron alumnos con ese nombre.
                     </Text>
                   </View>
                 ) : (
@@ -2892,14 +2935,21 @@ export default function PantallaAlumnos() {
                         </Text>
 
                         <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                          {alumnos.length === 1
-                            ? "1 alumno registrado"
-                            : `${alumnos.length} alumnos registrados`}
+                          {busquedaAlumno.trim()
+                            ? alumnosFiltrados.length === 1
+                              ? "1 alumno encontrado"
+                              : `${alumnosFiltrados.length} alumnos encontrados`
+                            : alumnos.length === 1
+                              ? "1 alumno registrado"
+                              : `${alumnos.length} alumnos registrados`}
                         </Text>
                       </View>
                     </View>
 
-                    {alumnos.map((alumno, indice) => {
+                    {alumnosFiltrados.map((alumno, indiceFiltrado) => {
+                      const indice = alumnos.findIndex(
+                        (item) => item.id === alumno.id,
+                      );
                       const editandoEsteAlumno = alumnoEditandoId === alumno.id;
                       const accionesBloqueadas =
                         modificandoAlumnos || alumnoEditandoId !== null;
@@ -2912,7 +2962,7 @@ export default function PantallaAlumnos() {
                         <View
                           key={alumno.id}
                           className={`flex-row items-center py-3 ${
-                            indice < alumnos.length - 1
+                            indiceFiltrado < alumnosFiltrados.length - 1
                               ? "border-b border-slate-200 dark:border-slate-700"
                               : ""
                           }`}
