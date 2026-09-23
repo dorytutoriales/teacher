@@ -68,11 +68,8 @@ const crearClaveCalificacion = (idAlumno: string, idTrabajo: string) => {
 
 export default function PantallaCalificaciones() {
   const router = useRouter();
-
   const parametros = useLocalSearchParams<ParametrosCalificaciones>();
-
   const { colorScheme, toggleColorScheme } = useColorScheme();
-
   const modoOscuro = colorScheme === "dark";
 
   const obtenerParametro = (
@@ -87,27 +84,19 @@ export default function PantallaCalificaciones() {
   };
 
   const idClase = obtenerParametro(parametros.id, "");
-
   const nombreClase = obtenerParametro(parametros.nombreClase, "Clase");
 
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
-
   const [trabajos, setTrabajos] = useState<TrabajoCalificacion[]>([]);
-
   const [calificaciones, setCalificaciones] = useState<Record<string, string>>(
     {},
   );
-
   const [busquedaAlumno, setBusquedaAlumno] = useState("");
-
   const [cargando, setCargando] = useState(true);
-
   const [agregandoTrabajo, setAgregandoTrabajo] = useState(false);
-
   const [trabajosGuardando, setTrabajosGuardando] = useState<
     Record<string, boolean>
   >({});
-
   const [celdasGuardando, setCeldasGuardando] = useState<
     Record<string, boolean>
   >({});
@@ -189,9 +178,7 @@ export default function PantallaCalificaciones() {
         );
 
         const columnasAlumnos = await ejecutarConTiempoMaximo(
-          db.getAllAsync<{
-            name: string;
-          }>("PRAGMA table_info(alumnos);"),
+          db.getAllAsync<{ name: string }>("PRAGMA table_info(alumnos);"),
         );
 
         const existeColumnaPosicion = columnasAlumnos.some(
@@ -210,25 +197,25 @@ export default function PantallaCalificaciones() {
         const alumnosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<Alumno>(
             `
-                SELECT
-                  id,
-                  nombre,
-                  clase,
-                  posicion
-                FROM alumnos
-                WHERE clase = ?
-                ORDER BY
-                  CASE
-                    WHEN posicion > 0 THEN 0
-                    ELSE 1
-                  END ASC,
-                  CASE
-                    WHEN posicion > 0 THEN posicion
-                    ELSE NULL
-                  END ASC,
-                  nombre COLLATE NOCASE ASC
-                LIMIT 2000;
-              `,
+              SELECT
+                id,
+                nombre,
+                clase,
+                posicion
+              FROM alumnos
+              WHERE clase = ?
+              ORDER BY
+                CASE
+                  WHEN posicion > 0 THEN 0
+                  ELSE 1
+                END ASC,
+                CASE
+                  WHEN posicion > 0 THEN posicion
+                  ELSE NULL
+                END ASC,
+                nombre COLLATE NOCASE ASC
+              LIMIT 2000;
+            `,
             [idClase],
           ),
         );
@@ -236,17 +223,15 @@ export default function PantallaCalificaciones() {
         let trabajosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<TrabajoCalificacion>(
             `
-                SELECT
-                  id,
-                  clase,
-                  nombre,
-                  posicion
-                FROM trabajos_calificaciones
-                WHERE clase = ?
-                ORDER BY
-                  posicion ASC,
-                  rowid ASC;
-              `,
+              SELECT
+                id,
+                clase,
+                nombre,
+                posicion
+              FROM trabajos_calificaciones
+              WHERE clase = ?
+              ORDER BY posicion ASC, rowid ASC;
+            `,
             [idClase],
           ),
         );
@@ -282,13 +267,13 @@ export default function PantallaCalificaciones() {
         const registrosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<RegistroCalificacion>(
             `
-                SELECT
-                  alumno,
-                  trabajo,
-                  calificacion
-                FROM calificaciones
-                WHERE clase = ?;
-              `,
+              SELECT
+                alumno,
+                trabajo,
+                calificacion
+              FROM calificaciones
+              WHERE clase = ?;
+            `,
             [idClase],
           ),
         );
@@ -306,9 +291,7 @@ export default function PantallaCalificaciones() {
 
         if (componenteActivo) {
           setAlumnos(alumnosGuardados);
-
           setTrabajos(trabajosGuardados);
-
           setCalificaciones(calificacionesCargadas);
         }
       } catch (error) {
@@ -395,14 +378,14 @@ export default function PantallaCalificaciones() {
       await ejecutarConTiempoMaximo(
         db.runAsync(
           `
-              INSERT INTO trabajos_calificaciones (
-                id,
-                clase,
-                nombre,
-                posicion
-              )
-              VALUES (?, ?, ?, ?);
-            `,
+            INSERT INTO trabajos_calificaciones (
+              id,
+              clase,
+              nombre,
+              posicion
+            )
+            VALUES (?, ?, ?, ?);
+          `,
           [
             nuevoTrabajo.id,
             nuevoTrabajo.clase,
@@ -444,7 +427,6 @@ export default function PantallaCalificaciones() {
     }
 
     const nombreLimpio = trabajo.nombre.trim();
-
     const nombreFinal = nombreLimpio || `Trabajo ${trabajo.posicion}`;
 
     cambiarNombreTrabajoLocal(trabajo.id, nombreFinal);
@@ -460,11 +442,11 @@ export default function PantallaCalificaciones() {
       await ejecutarConTiempoMaximo(
         db.runAsync(
           `
-              UPDATE trabajos_calificaciones
-              SET nombre = ?
-              WHERE id = ?
-                AND clase = ?;
-            `,
+            UPDATE trabajos_calificaciones
+            SET nombre = ?
+            WHERE id = ?
+              AND clase = ?;
+          `,
           [nombreFinal, trabajo.id, idClase],
         ),
       );
@@ -482,7 +464,6 @@ export default function PantallaCalificaciones() {
         };
 
         delete nuevoEstado[trabajo.id];
-
         return nuevoEstado;
       });
     }
@@ -526,11 +507,11 @@ export default function PantallaCalificaciones() {
         await ejecutarConTiempoMaximo(
           db.runAsync(
             `
-                DELETE FROM calificaciones
-                WHERE alumno = ?
-                  AND clase = ?
-                  AND trabajo = ?;
-              `,
+              DELETE FROM calificaciones
+              WHERE alumno = ?
+                AND clase = ?
+                AND trabajo = ?;
+            `,
             [idAlumno, idClase, idTrabajo],
           ),
         );
@@ -541,25 +522,24 @@ export default function PantallaCalificaciones() {
           };
 
           delete nuevasCalificaciones[clave];
-
           return nuevasCalificaciones;
         });
       } else {
         await ejecutarConTiempoMaximo(
           db.runAsync(
             `
-                INSERT INTO calificaciones (
-                  alumno,
-                  clase,
-                  trabajo,
-                  calificacion
-                )
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(alumno, trabajo)
-                DO UPDATE SET
-                  clase = excluded.clase,
-                  calificacion = excluded.calificacion;
-              `,
+              INSERT INTO calificaciones (
+                alumno,
+                clase,
+                trabajo,
+                calificacion
+              )
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(alumno, trabajo)
+              DO UPDATE SET
+                clase = excluded.clase,
+                calificacion = excluded.calificacion;
+            `,
             [idAlumno, idClase, idTrabajo, calificacionLimpia],
           ),
         );
@@ -583,7 +563,6 @@ export default function PantallaCalificaciones() {
         };
 
         delete nuevoEstado[clave];
-
         return nuevoEstado;
       });
     }
@@ -599,7 +578,6 @@ export default function PantallaCalificaciones() {
           headerShown: false,
         }}
       />
-
       <SafeAreaView
         edges={["top", "left", "right", "bottom"]}
         style={{
@@ -612,8 +590,8 @@ export default function PantallaCalificaciones() {
           backgroundColor={modoOscuro ? "#020617" : "#f8fafc"}
           translucent={false}
         />
-
         <View className="flex-1 px-5 pb-4 pt-2">
+          {/* Botón regresar y modo claro / oscuro */}
           <View className="flex-row items-center justify-between">
             <Pressable
               onPress={() => router.back()}
@@ -627,7 +605,6 @@ export default function PantallaCalificaciones() {
                 color={modoOscuro ? "#60a5fa" : "#2563eb"}
               />
             </Pressable>
-
             <Pressable
               onPress={toggleColorScheme}
               accessibilityRole="button"
@@ -642,6 +619,7 @@ export default function PantallaCalificaciones() {
             </Pressable>
           </View>
 
+          {/* Encabezado */}
           <View className="mt-3 items-center">
             <Text className="text-center text-3xl font-bold text-blue-600 dark:text-blue-400">
               Dory Teacher
@@ -669,6 +647,7 @@ export default function PantallaCalificaciones() {
             className="mt-5 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
 
+          {/* Agregar trabajo o proyecto */}
           <View className="mt-3 items-end">
             <Pressable
               onPress={() => void agregarTrabajo()}
@@ -682,13 +661,13 @@ export default function PantallaCalificaciones() {
               ) : (
                 <FontAwesomeIcon icon={faPlus} size={16} color="#ffffff" />
               )}
-
               <Text className="ml-2 font-bold text-white">
                 Agregar trabajo/proyecto
               </Text>
             </Pressable>
           </View>
 
+          {/* Contenido */}
           <View className="mt-4 flex-1">
             {cargando ? (
               <View className="flex-1 items-center justify-center">
@@ -702,7 +681,6 @@ export default function PantallaCalificaciones() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   No hay alumnos registrados
                 </Text>
-
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   Agrega alumnos desde la pantalla Alumnos para capturar sus
                   calificaciones.
@@ -713,7 +691,6 @@ export default function PantallaCalificaciones() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   Sin resultados
                 </Text>
-
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   No se encontraron alumnos con esa búsqueda.
                 </Text>
@@ -734,6 +711,7 @@ export default function PantallaCalificaciones() {
                   }}
                   className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                 >
+                  {/* Encabezados */}
                   <View className="flex-row bg-blue-50 dark:bg-slate-800">
                     <View
                       style={{
@@ -782,7 +760,6 @@ export default function PantallaCalificaciones() {
                           accessibilityLabel={`Nombre del trabajo o proyecto ${trabajo.posicion}`}
                           className="min-h-11 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-center text-sm font-bold text-black dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                         />
-
                         {trabajosGuardando[trabajo.id] ? (
                           <ActivityIndicator
                             style={{
@@ -796,6 +773,7 @@ export default function PantallaCalificaciones() {
                     ))}
                   </View>
 
+                  {/* Filas de alumnos */}
                   <ScrollView
                     nestedScrollEnabled
                     showsVerticalScrollIndicator
@@ -882,7 +860,6 @@ export default function PantallaCalificaciones() {
                                     accessibilityLabel={`Calificación de ${alumno.nombre} en ${trabajo.nombre}`}
                                     className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-base font-semibold text-black dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                                   />
-
                                   {celdasGuardando[clave] ? (
                                     <ActivityIndicator
                                       style={{

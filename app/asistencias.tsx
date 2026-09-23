@@ -106,6 +106,12 @@ const formatearFechaBaseDatos = (fecha: Date) => {
   return `${anio}-${mes}-${dia}`;
 };
 
+/*
+ * Devuelve el lunes correspondiente a cualquier fecha.
+ *
+ * Se utiliza mediodía para evitar cambios inesperados
+ * provocados por horario de verano o zona horaria.
+ */
 const obtenerLunesSemana = (fecha: Date) => {
   const lunes = new Date(
     fecha.getFullYear(),
@@ -121,10 +127,13 @@ const obtenerLunesSemana = (fecha: Date) => {
   const diasDesdeLunes = diaActual === 0 ? 6 : diaActual - 1;
 
   lunes.setDate(lunes.getDate() - diasDesdeLunes);
-
   return lunes;
 };
 
+/*
+ * Obtiene los siete días de una semana iniciando
+ * siempre en lunes.
+ */
 const obtenerDiasSemana = (lunesSemana: Date) => {
   return Array.from({ length: 7 }, (_, indice) => {
     return new Date(
@@ -143,6 +152,9 @@ const obtenerDiasSemanaActual = () => {
   return obtenerDiasSemana(obtenerLunesSemana(new Date()));
 };
 
+/*
+ * Suma o resta semanas completas.
+ */
 const sumarSemanas = (fecha: Date, cantidadSemanas: number) => {
   return new Date(
     fecha.getFullYear(),
@@ -155,13 +167,19 @@ const sumarSemanas = (fecha: Date, cantidadSemanas: number) => {
   );
 };
 
+/*
+ * Obtiene todas las semanas que tienen por lo menos
+ * un día dentro del año seleccionado.
+ *
+ * De esta manera también se muestran correctamente
+ * semanas que comienzan a finales de diciembre o
+ * terminan a principios de enero.
+ */
 const obtenerSemanasAnio = (anio: number) => {
   const primerDiaAnio = new Date(anio, 0, 1, 12, 0, 0, 0);
-
   const ultimoDiaAnio = new Date(anio, 11, 31, 12, 0, 0, 0);
 
   let lunes = obtenerLunesSemana(primerDiaAnio);
-
   const semanas: Date[] = [];
 
   while (lunes <= ultimoDiaAnio) {
@@ -183,6 +201,9 @@ const obtenerSemanasAnio = (anio: number) => {
   return semanas;
 };
 
+/*
+ * Texto completo mostrado dentro del selector.
+ */
 const formatearRangoSemana = (lunes: Date) => {
   const dias = obtenerDiasSemana(lunes);
   const domingo = dias[6];
@@ -197,11 +218,7 @@ const formatearRangoSemana = (lunes: Date) => {
   }
 
   if (lunes.getFullYear() === domingo.getFullYear()) {
-    return `${lunes.getDate()} de ${
-      MESES[lunes.getMonth()]
-    } al ${domingo.getDate()} de ${
-      MESES[domingo.getMonth()]
-    } de ${domingo.getFullYear()}`;
+    return `${lunes.getDate()} de ${MESES[lunes.getMonth()]} al ${domingo.getDate()} de ${MESES[domingo.getMonth()]} de ${domingo.getFullYear()}`;
   }
 
   return `${lunes.getDate()} de ${
@@ -211,6 +228,9 @@ const formatearRangoSemana = (lunes: Date) => {
   } de ${domingo.getFullYear()}`;
 };
 
+/*
+ * Texto corto mostrado junto al botón Semanas.
+ */
 const formatearRangoSemanaCorto = (lunes: Date) => {
   const domingo = obtenerDiasSemana(lunes)[6];
 
@@ -225,36 +245,37 @@ const crearClaveAsistencia = (idAlumno: string, fecha: string) => {
 
 export default function PantallaAsistencias() {
   const router = useRouter();
-
   const parametros = useLocalSearchParams<ParametrosAsistencias>();
-
   const { colorScheme, toggleColorScheme } = useColorScheme();
-
   const modoOscuro = colorScheme === "dark";
 
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
-
   const [busquedaAlumno, setBusquedaAlumno] = useState("");
-
   const [cargando, setCargando] = useState(true);
-
   const [asistencias, setAsistencias] = useState<
     Record<string, EstadoAsistencia>
   >({});
-
   const [celdasGuardando, setCeldasGuardando] = useState<
     Record<string, boolean>
   >({});
 
+  /*
+   * Semana que se está mostrando actualmente.
+   *
+   * Al abrir la pantalla comienza siempre con
+   * la semana actual.
+   */
   const [lunesSemanaSeleccionada, setLunesSemanaSeleccionada] = useState<Date>(
     () => obtenerLunesSemana(new Date()),
   );
 
   const [selectorSemanasVisible, setSelectorSemanasVisible] = useState(false);
 
+  /*
+   * Año mostrado dentro del selector de semanas.
+   */
   const [anioSelectorSemanas, setAnioSelectorSemanas] = useState(() => {
     const semanaActual = obtenerDiasSemanaActual();
-
     return semanaActual[3].getFullYear();
   });
 
@@ -270,9 +291,12 @@ export default function PantallaAsistencias() {
   };
 
   const idClase = obtenerParametro(parametros.id, "");
-
   const nombreClase = obtenerParametro(parametros.nombreClase, "Clase");
 
+  /*
+   * Los días cambian automáticamente cuando el usuario
+   * selecciona otra semana.
+   */
   const diasSemana = useMemo(() => {
     return obtenerDiasSemana(lunesSemanaSeleccionada);
   }, [lunesSemanaSeleccionada]);
@@ -285,18 +309,37 @@ export default function PantallaAsistencias() {
     return formatearFechaBaseDatos(diasSemana[diasSemana.length - 1]);
   }, [diasSemana]);
 
+  /*
+   * Semanas disponibles dentro del año mostrado
+   * en el selector.
+   */
   const semanasSelector = useMemo(() => {
     return obtenerSemanasAnio(anioSelectorSemanas);
   }, [anioSelectorSemanas]);
 
+  /*
+   * Abre el selector mostrando el año correspondiente
+   * a la semana que actualmente está seleccionada.
+   */
   const abrirSelectorSemanas = () => {
     const dias = obtenerDiasSemana(lunesSemanaSeleccionada);
 
+    /*
+     * Se utiliza el jueves de la semana para identificar
+     * correctamente el año cuando la semana está entre
+     * diciembre y enero.
+     */
     setAnioSelectorSemanas(dias[3].getFullYear());
-
     setSelectorSemanasVisible(true);
   };
 
+  /*
+   * Cambia la semana de asistencia.
+   *
+   * El useEffect que carga los datos detectará automáticamente
+   * el nuevo intervalo fechaInicial / fechaFinal y recuperará
+   * de SQLite las asistencias guardadas para esa semana.
+   */
   const seleccionarSemana = (lunes: Date) => {
     setLunesSemanaSeleccionada(
       new Date(
@@ -309,10 +352,13 @@ export default function PantallaAsistencias() {
         0,
       ),
     );
-
     setSelectorSemanasVisible(false);
   };
 
+  /*
+   * Carga los alumnos de la clase y las asistencias
+   * correspondientes a la semana seleccionada.
+   */
   useEffect(() => {
     let componenteActivo = true;
 
@@ -331,6 +377,23 @@ export default function PantallaAsistencias() {
 
         const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
 
+        /*
+         * La tabla alumnos ya existe normalmente.
+         *
+         * Se mantiene CREATE TABLE IF NOT EXISTS para que
+         * esta pantalla también pueda funcionar si se abre
+         * antes de entrar a la pantalla de Alumnos.
+         *
+         * La tabla asistencias almacena:
+         *
+         * - alumno
+         * - clase
+         * - fecha
+         * - estado
+         *
+         * La combinación alumno + clase + fecha es única.
+         * Esto permite recuperar cualquier semana posteriormente.
+         */
         await ejecutarConTiempoMaximo(
           db.execAsync(`
             CREATE TABLE IF NOT EXISTS alumnos (
@@ -369,10 +432,12 @@ export default function PantallaAsistencias() {
           `),
         );
 
+        /*
+         * Compatibilidad con bases de datos antiguas que
+         * todavía no tengan la columna posicion.
+         */
         const columnasAlumnos = await ejecutarConTiempoMaximo(
-          db.getAllAsync<{
-            name: string;
-          }>("PRAGMA table_info(alumnos);"),
+          db.getAllAsync<{ name: string }>("PRAGMA table_info(alumnos);"),
         );
 
         const existeColumnaPosicion = columnasAlumnos.some(
@@ -391,41 +456,45 @@ export default function PantallaAsistencias() {
         const alumnosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<Alumno>(
             `
-                SELECT
-                  id,
-                  nombre,
-                  clase,
-                  posicion
-                FROM alumnos
-                WHERE clase = ?
-                ORDER BY
-                  CASE
-                    WHEN posicion > 0 THEN 0
-                    ELSE 1
-                  END ASC,
-                  CASE
-                    WHEN posicion > 0 THEN posicion
-                    ELSE NULL
-                  END ASC,
-                  nombre COLLATE NOCASE ASC
-                LIMIT 2000;
-              `,
+              SELECT
+                id,
+                nombre,
+                clase,
+                posicion
+              FROM alumnos
+              WHERE clase = ?
+              ORDER BY
+                CASE
+                  WHEN posicion > 0 THEN 0
+                  ELSE 1
+                END ASC,
+                CASE
+                  WHEN posicion > 0 THEN posicion
+                  ELSE NULL
+                END ASC,
+                nombre COLLATE NOCASE ASC
+              LIMIT 2000;
+            `,
             [idClase],
           ),
         );
 
+        /*
+         * Solamente se recuperan las asistencias correspondientes
+         * a la semana seleccionada.
+         */
         const registrosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<RegistroAsistencia>(
             `
-                SELECT
-                  alumno,
-                  fecha,
-                  estado
-                FROM asistencias
-                WHERE clase = ?
-                  AND fecha >= ?
-                  AND fecha <= ?;
-              `,
+              SELECT
+                alumno,
+                fecha,
+                estado
+              FROM asistencias
+              WHERE clase = ?
+                AND fecha >= ?
+                AND fecha <= ?;
+            `,
             [idClase, fechaInicial, fechaFinal],
           ),
         );
@@ -435,14 +504,12 @@ export default function PantallaAsistencias() {
         registrosGuardados.forEach((registro) => {
           if (registro.estado === "presente" || registro.estado === "falta") {
             const clave = crearClaveAsistencia(registro.alumno, registro.fecha);
-
             asistenciasCargadas[clave] = registro.estado;
           }
         });
 
         if (componenteActivo) {
           setAlumnos(alumnosGuardados);
-
           setAsistencias(asistenciasCargadas);
         }
       } catch (error) {
@@ -471,6 +538,10 @@ export default function PantallaAsistencias() {
     };
   }, [fechaFinal, fechaInicial, idClase]);
 
+  /*
+   * Conserva el número progresivo original del alumno
+   * incluso cuando se utiliza el buscador.
+   */
   const numeroPorAlumno = useMemo(() => {
     const numeros = new Map<string, number>();
 
@@ -484,6 +555,9 @@ export default function PantallaAsistencias() {
     return numeros;
   }, [alumnos]);
 
+  /*
+   * Motor de búsqueda.
+   */
   const alumnosFiltrados = useMemo(() => {
     const texto = normalizarTexto(busquedaAlumno);
 
@@ -520,9 +594,17 @@ export default function PantallaAsistencias() {
     });
   };
 
+  /*
+   * Cada toque cambia:
+   *
+   * vacío -> presente
+   * presente -> falta
+   * falta -> vacío
+   *
+   * Cada modificación se guarda inmediatamente en SQLite.
+   */
   const cambiarAsistencia = async (alumno: Alumno, fecha: Date) => {
     const fechaTexto = formatearFechaBaseDatos(fecha);
-
     const clave = crearClaveAsistencia(alumno.id, fechaTexto);
 
     if (celdasGuardando[clave]) {
@@ -530,7 +612,6 @@ export default function PantallaAsistencias() {
     }
 
     const estadoAnterior = asistencias[clave];
-
     let estadoNuevo: EstadoAsistencia | undefined;
 
     if (!estadoAnterior) {
@@ -546,11 +627,17 @@ export default function PantallaAsistencias() {
       [clave]: true,
     }));
 
+    /*
+     * Actualización visual inmediata.
+     */
     actualizarAsistenciaLocal(clave, estadoNuevo);
 
     try {
       const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
 
+      /*
+       * Si vuelve a estado vacío se elimina el registro.
+       */
       if (!estadoNuevo) {
         await ejecutarConTiempoMaximo(
           db.runAsync(
@@ -564,6 +651,11 @@ export default function PantallaAsistencias() {
           ),
         );
       } else {
+        /*
+         * INSERT ... ON CONFLICT garantiza persistencia
+         * y permite modificar una asistencia ya existente
+         * sin crear registros duplicados.
+         */
         await ejecutarConTiempoMaximo(
           db.runAsync(
             `
@@ -585,6 +677,11 @@ export default function PantallaAsistencias() {
     } catch (error) {
       console.error("Error al guardar asistencia:", error);
 
+      /*
+       * Si SQLite falla, se recupera el estado anterior
+       * para que la pantalla nunca muestre un dato que no
+       * haya sido guardado.
+       */
       actualizarAsistenciaLocal(clave, estadoAnterior);
 
       Alert.alert(
@@ -598,7 +695,6 @@ export default function PantallaAsistencias() {
         };
 
         delete nuevasCeldas[clave];
-
         return nuevasCeldas;
       });
     }
@@ -619,6 +715,7 @@ export default function PantallaAsistencias() {
         }}
       />
 
+      {/* Selector de semanas */}
       <Modal
         visible={selectorSemanasVisible}
         transparent
@@ -639,16 +736,17 @@ export default function PantallaAsistencias() {
             }}
             className="overflow-hidden rounded-3xl bg-white dark:bg-slate-900"
           >
+            {/* Encabezado del selector */}
             <View className="border-b border-slate-200 px-5 pb-4 pt-5 dark:border-slate-700">
               <Text className="text-center text-xl font-bold text-black dark:text-white">
                 Seleccionar semana
               </Text>
-
               <Text className="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">
                 Elige la semana en la que deseas tomar asistencia
               </Text>
             </View>
 
+            {/* Selector de año */}
             <View className="flex-row items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
               <Pressable
                 onPress={() =>
@@ -681,6 +779,7 @@ export default function PantallaAsistencias() {
               </Pressable>
             </View>
 
+            {/* Lista de semanas */}
             <ScrollView
               showsVerticalScrollIndicator
               contentContainerStyle={{
@@ -691,9 +790,7 @@ export default function PantallaAsistencias() {
             >
               {semanasSelector.map((lunes, indice) => {
                 const clave = formatearFechaBaseDatos(lunes);
-
                 const seleccionada = clave === claveSemanaSeleccionada;
-
                 const dias = obtenerDiasSemana(lunes);
 
                 const perteneceAlAnio = dias.some(
@@ -729,7 +826,6 @@ export default function PantallaAsistencias() {
                         >
                           Semana {indice + 1}
                         </Text>
-
                         <Text className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                           {formatearRangoSemana(lunes)}
                         </Text>
@@ -750,6 +846,7 @@ export default function PantallaAsistencias() {
               })}
             </ScrollView>
 
+            {/* Semana actual */}
             <View className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
               <Pressable
                 onPress={() =>
@@ -791,6 +888,7 @@ export default function PantallaAsistencias() {
         />
 
         <View className="flex-1 px-5 pb-4 pt-2">
+          {/* Botón regresar y modo claro / oscuro */}
           <View className="flex-row items-center justify-between">
             <Pressable
               onPress={() => router.back()}
@@ -819,6 +917,7 @@ export default function PantallaAsistencias() {
             </Pressable>
           </View>
 
+          {/* Encabezado */}
           <View className="mt-3 items-center">
             <Text className="text-center text-3xl font-bold text-blue-600 dark:text-blue-400">
               Dory Teacher
@@ -833,7 +932,7 @@ export default function PantallaAsistencias() {
             </Text>
           </View>
 
-          {/* NUEVA POSICIÓN DEL BOTÓN SEMANAS */}
+          {/* Selector de semana colocado fuera de la tabla */}
           <View className="mt-4 flex-row items-center justify-center">
             <Pressable
               onPress={abrirSelectorSemanas}
@@ -866,12 +965,14 @@ export default function PantallaAsistencias() {
             className="mt-4 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
 
+          {/* Explicación de las casillas */}
           <View className="mt-3 rounded-xl bg-blue-50 px-4 py-3 dark:bg-slate-900">
             <Text className="text-center text-sm text-slate-600 dark:text-slate-300">
               Toca una casilla: vacío → ✓ presente → ✕ falta → vacío
             </Text>
           </View>
 
+          {/* Contenido */}
           <View className="mt-4 flex-1">
             {cargando ? (
               <View className="flex-1 items-center justify-center">
@@ -885,7 +986,6 @@ export default function PantallaAsistencias() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   No hay alumnos registrados
                 </Text>
-
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   Agrega alumnos desde la pantalla Alumnos para tomar
                   asistencia.
@@ -896,7 +996,6 @@ export default function PantallaAsistencias() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   Sin resultados
                 </Text>
-
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   No se encontraron alumnos con esa búsqueda.
                 </Text>
@@ -917,7 +1016,9 @@ export default function PantallaAsistencias() {
                   }}
                   className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                 >
+                  {/* Encabezados */}
                   <View className="flex-row bg-blue-50 dark:bg-slate-800">
+                    {/* Número */}
                     <View
                       style={{
                         width: ANCHO_NUMERO,
@@ -929,6 +1030,7 @@ export default function PantallaAsistencias() {
                       </Text>
                     </View>
 
+                    {/* Alumno */}
                     <View
                       style={{
                         width: ANCHO_NOMBRE,
@@ -940,6 +1042,7 @@ export default function PantallaAsistencias() {
                       </Text>
                     </View>
 
+                    {/* Días de la semana */}
                     {diasSemana.map((fecha) => {
                       const fechaTexto = formatearFechaBaseDatos(fecha);
 
@@ -954,7 +1057,6 @@ export default function PantallaAsistencias() {
                           <Text className="text-center text-xs font-bold text-blue-600 dark:text-blue-400">
                             {DIAS_SEMANA[fecha.getDay()]}
                           </Text>
-
                           <Text className="mt-1 text-center text-lg font-bold text-black dark:text-white">
                             {fecha.getDate()}
                           </Text>
@@ -962,7 +1064,6 @@ export default function PantallaAsistencias() {
                           <Text className="text-center text-xs text-slate-600 dark:text-slate-300">
                             {MESES[fecha.getMonth()]}
                           </Text>
-
                           <Text className="text-center text-xs text-slate-500 dark:text-slate-400">
                             {fecha.getFullYear()}
                           </Text>
@@ -971,6 +1072,7 @@ export default function PantallaAsistencias() {
                     })}
                   </View>
 
+                  {/* Filas de alumnos */}
                   <ScrollView
                     nestedScrollEnabled
                     showsVerticalScrollIndicator
@@ -987,6 +1089,7 @@ export default function PantallaAsistencias() {
                           key={alumno.id}
                           className="flex-row border-t border-slate-200 dark:border-slate-700"
                         >
+                          {/* Número progresivo */}
                           <View
                             style={{
                               width: ANCHO_NUMERO,
@@ -1001,6 +1104,7 @@ export default function PantallaAsistencias() {
                             </View>
                           </View>
 
+                          {/* Nombre */}
                           <View
                             style={{
                               width: ANCHO_NOMBRE,
@@ -1016,16 +1120,14 @@ export default function PantallaAsistencias() {
                             </Text>
                           </View>
 
+                          {/* Casillas de asistencia */}
                           {diasSemana.map((fecha) => {
                             const fechaTexto = formatearFechaBaseDatos(fecha);
-
                             const clave = crearClaveAsistencia(
                               alumno.id,
                               fechaTexto,
                             );
-
                             const estado = asistencias[clave];
-
                             const guardando = Boolean(celdasGuardando[clave]);
 
                             return (

@@ -13,7 +13,6 @@ import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 type ParametrosClase = {
   id?: string | string[];
   nombreClase?: string | string[];
@@ -30,7 +29,6 @@ export default function PantallaClase() {
   const { colorScheme, toggleColorScheme } = useColorScheme();
 
   const modoOscuro = colorScheme === "dark";
-
   const obtenerParametro = (
     parametro: string | string[] | undefined,
     valorPredeterminado: string,
@@ -49,7 +47,6 @@ export default function PantallaClase() {
     parametros.escuela,
     "Escuela no especificada",
   );
-
   const grupo = obtenerParametro(parametros.grupo, "Grupo no especificado");
 
   const descripcion = obtenerParametro(
@@ -90,7 +87,6 @@ export default function PantallaClase() {
           headerShown: false,
         }}
       />
-
       <SafeAreaView
         edges={["top", "left", "right", "bottom"]}
         style={{
@@ -103,7 +99,6 @@ export default function PantallaClase() {
           backgroundColor={modoOscuro ? "#020617" : "#f8fafc"}
           translucent={false}
         />
-
         <ScrollView
           className="flex-1"
           contentContainerStyle={{
@@ -126,7 +121,6 @@ export default function PantallaClase() {
                   color={modoOscuro ? "#60a5fa" : "#2563eb"}
                 />
               </Pressable>
-
               <Pressable
                 onPress={toggleColorScheme}
                 accessibilityRole="button"
@@ -140,7 +134,6 @@ export default function PantallaClase() {
                 />
               </Pressable>
             </View>
-
             {/* Encabezado */}
             <View className="mt-3 items-center">
               <Text className="text-center text-3xl font-bold text-blue-600 dark:text-blue-400">
@@ -151,7 +144,6 @@ export default function PantallaClase() {
                 {nombreClase}
               </Text>
             </View>
-
             {/* Información de la clase */}
             <View className="mt-5 rounded-2xl border border-blue-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
               <View>
@@ -163,7 +155,6 @@ export default function PantallaClase() {
                   {escuela}
                 </Text>
               </View>
-
               <View className="mt-4">
                 <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                   Grupo
@@ -173,7 +164,6 @@ export default function PantallaClase() {
                   {grupo}
                 </Text>
               </View>
-
               <View className="mt-4">
                 <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                   Descripción
@@ -184,7 +174,6 @@ export default function PantallaClase() {
                 </Text>
               </View>
             </View>
-
             {/* Botones de opciones */}
             <View className="flex-1 justify-center gap-4 py-8">
               <Pressable
@@ -194,12 +183,10 @@ export default function PantallaClase() {
                 className="w-full flex-row items-center justify-center rounded-xl bg-blue-600 px-5 py-4 active:opacity-70 dark:bg-blue-500"
               >
                 <FontAwesomeIcon icon={faUsers} size={22} color="#ffffff" />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Alumnos
                 </Text>
               </Pressable>
-
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Abrir asistencia"
@@ -210,12 +197,10 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Asistencia
                 </Text>
               </Pressable>
-
               <Pressable
                 onPress={abrirPantallaCalificaciones}
                 accessibilityRole="button"
@@ -227,12 +212,10 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Calificaciones
                 </Text>
               </Pressable>
-
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Abrir exámenes"
@@ -243,7 +226,6 @@ export default function PantallaClase() {
                   size={22}
                   color="#ffffff"
                 />
-
                 <Text className="ml-3 text-lg font-bold text-white">
                   Exámenes
                 </Text>
