@@ -2857,18 +2857,7 @@ export default function PantallaAlumnos() {
                   </Pressable>
                 </View>
 
-                {cargando ? (
-                  <View className="items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 px-5 py-6 dark:border-blue-700 dark:bg-slate-900">
-                    <ActivityIndicator
-                      size="small"
-                      color={modoOscuro ? "#60a5fa" : "#2563eb"}
-                    />
-
-                    <Text className="mt-3 text-center text-base text-slate-600 dark:text-slate-400">
-                      Cargando alumnos...
-                    </Text>
-                  </View>
-                ) : alumnos.length === 0 ? (
+                {cargando ? null : alumnos.length === 0 ? (
                   <View className="items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 px-5 py-8 dark:border-blue-700 dark:bg-slate-900">
                     <View className="h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-slate-800">
                       <FontAwesomeIcon
