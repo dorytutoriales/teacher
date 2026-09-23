@@ -1,6 +1,11 @@
-import { ejecutarConTiempoMaximo, obtenerBaseDatos } from "@/lib/database";
+import {
+  asegurarEsquemaBaseDatos,
+  ejecutarConTiempoMaximo,
+  obtenerBaseDatos,
+} from "@/lib/database";
 import {
   faBookOpen,
+  faDatabase,
   faFloppyDisk,
   faMoon,
   faPen,
@@ -59,28 +64,19 @@ export default function Index() {
   const [descripcion, setDescripcion] = useState("");
 
   /*
-   * Crea la tabla y carga las clases almacenadas
-   * cuando se abre la pantalla.
+   * Inicializa una sola vez el esquema SQLite y
+   * carga las clases almacenadas.
    */
   useEffect(() => {
     let componenteActivo = true;
 
     const inicializarBaseDatos = async () => {
+      setCargando(true);
+
       try {
-        const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
-
-        await ejecutarConTiempoMaximo(
-          db.execAsync(`
-            PRAGMA journal_mode = WAL;
-
-            CREATE TABLE IF NOT EXISTS clase (
-              id TEXT PRIMARY KEY NOT NULL,
-              clase TEXT NOT NULL,
-              escuela TEXT NOT NULL,
-              grupo TEXT NOT NULL DEFAULT '',
-              descripcion TEXT NOT NULL DEFAULT ''
-            );
-          `),
+        const db = await ejecutarConTiempoMaximo(
+          asegurarEsquemaBaseDatos(),
+          12000,
         );
 
         const clasesGuardadas = await ejecutarConTiempoMaximo(
@@ -94,6 +90,7 @@ export default function Index() {
             FROM clase
             ORDER BY rowid DESC;
           `),
+          10000,
         );
 
         if (componenteActivo) {
@@ -102,10 +99,12 @@ export default function Index() {
       } catch (error) {
         console.error("Error al inicializar SQLite:", error);
 
-        Alert.alert(
-          "Error",
-          "No fue posible abrir la base de datos de clases.",
-        );
+        if (componenteActivo) {
+          Alert.alert(
+            "Error",
+            "No fue posible abrir la base de datos de clases.",
+          );
+        }
       } finally {
         if (componenteActivo) {
           setCargando(false);
@@ -170,6 +169,10 @@ export default function Index() {
         descripcion: item.descripcion,
       },
     });
+  };
+
+  const abrirBaseDatos = () => {
+    router.push("/base-datos");
   };
 
   const cerrarModal = () => {
@@ -346,8 +349,21 @@ export default function Index() {
       />
 
       <View className="flex-1 px-5 pt-2">
-        {/* Botón de modo claro y oscuro */}
-        <View className="items-end">
+        {/* Botón de base de datos y modo claro/oscuro */}
+        <View className="flex-row items-center justify-end">
+          <Pressable
+            onPress={abrirBaseDatos}
+            accessibilityRole="button"
+            accessibilityLabel="Ver base de datos"
+            className="mr-2 h-11 w-11 items-center justify-center rounded-full bg-blue-100 active:opacity-70 dark:bg-slate-800"
+          >
+            <FontAwesomeIcon
+              icon={faDatabase}
+              size={19}
+              color={modoOscuro ? "#60a5fa" : "#2563eb"}
+            />
+          </Pressable>
+
           <Pressable
             onPress={toggleColorScheme}
             accessibilityRole="button"
