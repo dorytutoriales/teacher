@@ -43,7 +43,6 @@ export default function PantallaClase() {
   };
 
   const idClase = obtenerParametro(parametros.id, "");
-
   const nombreClase = obtenerParametro(parametros.nombreClase, "Clase");
 
   const escuela = obtenerParametro(
@@ -71,9 +70,9 @@ export default function PantallaClase() {
     });
   };
 
-  const abrirPantallaAsistencias = () => {
+  const abrirPantallaCalificaciones = () => {
     router.push({
-      pathname: "/asistencias",
+      pathname: "/calificaciones",
       params: {
         id: idClase,
         nombreClase,
@@ -202,9 +201,8 @@ export default function PantallaClase() {
               </Pressable>
 
               <Pressable
-                onPress={abrirPantallaAsistencias}
                 accessibilityRole="button"
-                accessibilityLabel="Abrir asistencias"
+                accessibilityLabel="Abrir asistencia"
                 className="w-full flex-row items-center justify-center rounded-xl bg-blue-600 px-5 py-4 active:opacity-70 dark:bg-blue-500"
               >
                 <FontAwesomeIcon
@@ -214,11 +212,12 @@ export default function PantallaClase() {
                 />
 
                 <Text className="ml-3 text-lg font-bold text-white">
-                  Asistencias
+                  Asistencia
                 </Text>
               </Pressable>
 
               <Pressable
+                onPress={abrirPantallaCalificaciones}
                 accessibilityRole="button"
                 accessibilityLabel="Abrir calificaciones"
                 className="w-full flex-row items-center justify-center rounded-xl bg-blue-600 px-5 py-4 active:opacity-70 dark:bg-blue-500"

@@ -88,7 +88,6 @@ const MESES_CORTOS = [
 
 const ANCHO_NUMERO = 55;
 const ANCHO_NOMBRE = 200;
-const ANCHO_SEMANAS = 125;
 const ANCHO_FECHA = 96;
 
 const normalizarTexto = (texto: string) => {
@@ -107,12 +106,6 @@ const formatearFechaBaseDatos = (fecha: Date) => {
   return `${anio}-${mes}-${dia}`;
 };
 
-/*
- * Devuelve el lunes correspondiente a cualquier fecha.
- *
- * Se utiliza mediodía para evitar cambios inesperados
- * provocados por horario de verano o zona horaria.
- */
 const obtenerLunesSemana = (fecha: Date) => {
   const lunes = new Date(
     fecha.getFullYear(),
@@ -132,10 +125,6 @@ const obtenerLunesSemana = (fecha: Date) => {
   return lunes;
 };
 
-/*
- * Obtiene los siete días de una semana iniciando
- * siempre en lunes.
- */
 const obtenerDiasSemana = (lunesSemana: Date) => {
   return Array.from({ length: 7 }, (_, indice) => {
     return new Date(
@@ -154,9 +143,6 @@ const obtenerDiasSemanaActual = () => {
   return obtenerDiasSemana(obtenerLunesSemana(new Date()));
 };
 
-/*
- * Suma o resta semanas completas.
- */
 const sumarSemanas = (fecha: Date, cantidadSemanas: number) => {
   return new Date(
     fecha.getFullYear(),
@@ -169,16 +155,9 @@ const sumarSemanas = (fecha: Date, cantidadSemanas: number) => {
   );
 };
 
-/*
- * Obtiene todas las semanas que tienen por lo menos
- * un día dentro del año seleccionado.
- *
- * De esta manera también se muestran correctamente
- * semanas que comienzan a finales de diciembre o
- * terminan a principios de enero.
- */
 const obtenerSemanasAnio = (anio: number) => {
   const primerDiaAnio = new Date(anio, 0, 1, 12, 0, 0, 0);
+
   const ultimoDiaAnio = new Date(anio, 11, 31, 12, 0, 0, 0);
 
   let lunes = obtenerLunesSemana(primerDiaAnio);
@@ -204,9 +183,6 @@ const obtenerSemanasAnio = (anio: number) => {
   return semanas;
 };
 
-/*
- * Texto completo mostrado dentro del selector.
- */
 const formatearRangoSemana = (lunes: Date) => {
   const dias = obtenerDiasSemana(lunes);
   const domingo = dias[6];
@@ -221,7 +197,11 @@ const formatearRangoSemana = (lunes: Date) => {
   }
 
   if (lunes.getFullYear() === domingo.getFullYear()) {
-    return `${lunes.getDate()} de ${MESES[lunes.getMonth()]} al ${domingo.getDate()} de ${MESES[domingo.getMonth()]} de ${domingo.getFullYear()}`;
+    return `${lunes.getDate()} de ${
+      MESES[lunes.getMonth()]
+    } al ${domingo.getDate()} de ${
+      MESES[domingo.getMonth()]
+    } de ${domingo.getFullYear()}`;
   }
 
   return `${lunes.getDate()} de ${
@@ -231,9 +211,6 @@ const formatearRangoSemana = (lunes: Date) => {
   } de ${domingo.getFullYear()}`;
 };
 
-/*
- * Texto corto mostrado debajo del botón Semanas.
- */
 const formatearRangoSemanaCorto = (lunes: Date) => {
   const domingo = obtenerDiasSemana(lunes)[6];
 
@@ -256,7 +233,9 @@ export default function PantallaAsistencias() {
   const modoOscuro = colorScheme === "dark";
 
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
+
   const [busquedaAlumno, setBusquedaAlumno] = useState("");
+
   const [cargando, setCargando] = useState(true);
 
   const [asistencias, setAsistencias] = useState<
@@ -267,21 +246,12 @@ export default function PantallaAsistencias() {
     Record<string, boolean>
   >({});
 
-  /*
-   * Semana que se está mostrando actualmente.
-   *
-   * Al abrir la pantalla comienza siempre con
-   * la semana actual.
-   */
   const [lunesSemanaSeleccionada, setLunesSemanaSeleccionada] = useState<Date>(
     () => obtenerLunesSemana(new Date()),
   );
 
   const [selectorSemanasVisible, setSelectorSemanasVisible] = useState(false);
 
-  /*
-   * Año mostrado dentro del selector de semanas.
-   */
   const [anioSelectorSemanas, setAnioSelectorSemanas] = useState(() => {
     const semanaActual = obtenerDiasSemanaActual();
 
@@ -303,10 +273,6 @@ export default function PantallaAsistencias() {
 
   const nombreClase = obtenerParametro(parametros.nombreClase, "Clase");
 
-  /*
-   * Los días cambian automáticamente cuando el usuario
-   * selecciona otra semana.
-   */
   const diasSemana = useMemo(() => {
     return obtenerDiasSemana(lunesSemanaSeleccionada);
   }, [lunesSemanaSeleccionada]);
@@ -319,37 +285,18 @@ export default function PantallaAsistencias() {
     return formatearFechaBaseDatos(diasSemana[diasSemana.length - 1]);
   }, [diasSemana]);
 
-  /*
-   * Semanas disponibles dentro del año mostrado
-   * en el selector.
-   */
   const semanasSelector = useMemo(() => {
     return obtenerSemanasAnio(anioSelectorSemanas);
   }, [anioSelectorSemanas]);
 
-  /*
-   * Abre el selector mostrando el año correspondiente
-   * a la semana que actualmente está seleccionada.
-   */
   const abrirSelectorSemanas = () => {
     const dias = obtenerDiasSemana(lunesSemanaSeleccionada);
 
-    /*
-     * Se utiliza el jueves de la semana para identificar
-     * correctamente el año cuando la semana está entre
-     * diciembre y enero.
-     */
     setAnioSelectorSemanas(dias[3].getFullYear());
+
     setSelectorSemanasVisible(true);
   };
 
-  /*
-   * Cambia la semana de asistencia.
-   *
-   * El useEffect que carga los datos detectará automáticamente
-   * el nuevo intervalo fechaInicial / fechaFinal y recuperará
-   * de SQLite las asistencias guardadas para esa semana.
-   */
   const seleccionarSemana = (lunes: Date) => {
     setLunesSemanaSeleccionada(
       new Date(
@@ -366,10 +313,6 @@ export default function PantallaAsistencias() {
     setSelectorSemanasVisible(false);
   };
 
-  /*
-   * Carga los alumnos de la clase y las asistencias
-   * correspondientes a la semana seleccionada.
-   */
   useEffect(() => {
     let componenteActivo = true;
 
@@ -388,23 +331,6 @@ export default function PantallaAsistencias() {
 
         const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
 
-        /*
-         * La tabla alumnos ya existe normalmente.
-         *
-         * Se mantiene CREATE TABLE IF NOT EXISTS para que
-         * esta pantalla también pueda funcionar si se abre
-         * antes de entrar a la pantalla de Alumnos.
-         *
-         * La tabla asistencias almacena:
-         *
-         * - alumno
-         * - clase
-         * - fecha
-         * - estado
-         *
-         * La combinación alumno + clase + fecha es única.
-         * Esto permite recuperar cualquier semana posteriormente.
-         */
         await ejecutarConTiempoMaximo(
           db.execAsync(`
             CREATE TABLE IF NOT EXISTS alumnos (
@@ -443,12 +369,10 @@ export default function PantallaAsistencias() {
           `),
         );
 
-        /*
-         * Compatibilidad con bases de datos antiguas que
-         * todavía no tengan la columna posicion.
-         */
         const columnasAlumnos = await ejecutarConTiempoMaximo(
-          db.getAllAsync<{ name: string }>("PRAGMA table_info(alumnos);"),
+          db.getAllAsync<{
+            name: string;
+          }>("PRAGMA table_info(alumnos);"),
         );
 
         const existeColumnaPosicion = columnasAlumnos.some(
@@ -467,45 +391,41 @@ export default function PantallaAsistencias() {
         const alumnosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<Alumno>(
             `
-              SELECT
-                id,
-                nombre,
-                clase,
-                posicion
-              FROM alumnos
-              WHERE clase = ?
-              ORDER BY
-                CASE
-                  WHEN posicion > 0 THEN 0
-                  ELSE 1
-                END ASC,
-                CASE
-                  WHEN posicion > 0 THEN posicion
-                  ELSE NULL
-                END ASC,
-                nombre COLLATE NOCASE ASC
-              LIMIT 2000;
-            `,
+                SELECT
+                  id,
+                  nombre,
+                  clase,
+                  posicion
+                FROM alumnos
+                WHERE clase = ?
+                ORDER BY
+                  CASE
+                    WHEN posicion > 0 THEN 0
+                    ELSE 1
+                  END ASC,
+                  CASE
+                    WHEN posicion > 0 THEN posicion
+                    ELSE NULL
+                  END ASC,
+                  nombre COLLATE NOCASE ASC
+                LIMIT 2000;
+              `,
             [idClase],
           ),
         );
 
-        /*
-         * Solamente se recuperan las asistencias correspondientes
-         * a la semana seleccionada.
-         */
         const registrosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<RegistroAsistencia>(
             `
-              SELECT
-                alumno,
-                fecha,
-                estado
-              FROM asistencias
-              WHERE clase = ?
-                AND fecha >= ?
-                AND fecha <= ?;
-            `,
+                SELECT
+                  alumno,
+                  fecha,
+                  estado
+                FROM asistencias
+                WHERE clase = ?
+                  AND fecha >= ?
+                  AND fecha <= ?;
+              `,
             [idClase, fechaInicial, fechaFinal],
           ),
         );
@@ -522,6 +442,7 @@ export default function PantallaAsistencias() {
 
         if (componenteActivo) {
           setAlumnos(alumnosGuardados);
+
           setAsistencias(asistenciasCargadas);
         }
       } catch (error) {
@@ -550,10 +471,6 @@ export default function PantallaAsistencias() {
     };
   }, [fechaFinal, fechaInicial, idClase]);
 
-  /*
-   * Conserva el número progresivo original del alumno
-   * incluso cuando se utiliza el buscador.
-   */
   const numeroPorAlumno = useMemo(() => {
     const numeros = new Map<string, number>();
 
@@ -567,9 +484,6 @@ export default function PantallaAsistencias() {
     return numeros;
   }, [alumnos]);
 
-  /*
-   * Motor de búsqueda.
-   */
   const alumnosFiltrados = useMemo(() => {
     const texto = normalizarTexto(busquedaAlumno);
 
@@ -606,15 +520,6 @@ export default function PantallaAsistencias() {
     });
   };
 
-  /*
-   * Cada toque cambia:
-   *
-   * vacío -> presente
-   * presente -> falta
-   * falta -> vacío
-   *
-   * Cada modificación se guarda inmediatamente en SQLite.
-   */
   const cambiarAsistencia = async (alumno: Alumno, fecha: Date) => {
     const fechaTexto = formatearFechaBaseDatos(fecha);
 
@@ -641,17 +546,11 @@ export default function PantallaAsistencias() {
       [clave]: true,
     }));
 
-    /*
-     * Actualización visual inmediata.
-     */
     actualizarAsistenciaLocal(clave, estadoNuevo);
 
     try {
       const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
 
-      /*
-       * Si vuelve a estado vacío se elimina el registro.
-       */
       if (!estadoNuevo) {
         await ejecutarConTiempoMaximo(
           db.runAsync(
@@ -665,11 +564,6 @@ export default function PantallaAsistencias() {
           ),
         );
       } else {
-        /*
-         * INSERT ... ON CONFLICT garantiza persistencia
-         * y permite modificar una asistencia ya existente
-         * sin crear registros duplicados.
-         */
         await ejecutarConTiempoMaximo(
           db.runAsync(
             `
@@ -691,11 +585,6 @@ export default function PantallaAsistencias() {
     } catch (error) {
       console.error("Error al guardar asistencia:", error);
 
-      /*
-       * Si SQLite falla, se recupera el estado anterior
-       * para que la pantalla nunca muestre un dato que no
-       * haya sido guardado.
-       */
       actualizarAsistenciaLocal(clave, estadoAnterior);
 
       Alert.alert(
@@ -716,10 +605,7 @@ export default function PantallaAsistencias() {
   };
 
   const anchoTabla =
-    ANCHO_NUMERO +
-    ANCHO_NOMBRE +
-    ANCHO_SEMANAS +
-    ANCHO_FECHA * diasSemana.length;
+    ANCHO_NUMERO + ANCHO_NOMBRE + ANCHO_FECHA * diasSemana.length;
 
   const claveSemanaSeleccionada = formatearFechaBaseDatos(
     lunesSemanaSeleccionada,
@@ -733,7 +619,6 @@ export default function PantallaAsistencias() {
         }}
       />
 
-      {/* Selector de semanas */}
       <Modal
         visible={selectorSemanasVisible}
         transparent
@@ -754,7 +639,6 @@ export default function PantallaAsistencias() {
             }}
             className="overflow-hidden rounded-3xl bg-white dark:bg-slate-900"
           >
-            {/* Encabezado del selector */}
             <View className="border-b border-slate-200 px-5 pb-4 pt-5 dark:border-slate-700">
               <Text className="text-center text-xl font-bold text-black dark:text-white">
                 Seleccionar semana
@@ -765,7 +649,6 @@ export default function PantallaAsistencias() {
               </Text>
             </View>
 
-            {/* Selector de año */}
             <View className="flex-row items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
               <Pressable
                 onPress={() =>
@@ -798,7 +681,6 @@ export default function PantallaAsistencias() {
               </Pressable>
             </View>
 
-            {/* Lista de semanas */}
             <ScrollView
               showsVerticalScrollIndicator
               contentContainerStyle={{
@@ -868,7 +750,6 @@ export default function PantallaAsistencias() {
               })}
             </ScrollView>
 
-            {/* Semana actual */}
             <View className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
               <Pressable
                 onPress={() =>
@@ -910,7 +791,6 @@ export default function PantallaAsistencias() {
         />
 
         <View className="flex-1 px-5 pb-4 pt-2">
-          {/* Botón regresar y modo claro / oscuro */}
           <View className="flex-row items-center justify-between">
             <Pressable
               onPress={() => router.back()}
@@ -939,7 +819,6 @@ export default function PantallaAsistencias() {
             </Pressable>
           </View>
 
-          {/* Encabezado */}
           <View className="mt-3 items-center">
             <Text className="text-center text-3xl font-bold text-blue-600 dark:text-blue-400">
               Dory Teacher
@@ -954,6 +833,26 @@ export default function PantallaAsistencias() {
             </Text>
           </View>
 
+          {/* NUEVA POSICIÓN DEL BOTÓN SEMANAS */}
+          <View className="mt-4 flex-row items-center justify-center">
+            <Pressable
+              onPress={abrirSelectorSemanas}
+              accessibilityRole="button"
+              accessibilityLabel="Seleccionar semana de asistencia"
+              className="min-h-11 items-center justify-center rounded-xl bg-blue-600 px-5 active:opacity-70 dark:bg-blue-500"
+            >
+              <Text className="text-center text-sm font-bold text-white">
+                Semanas
+              </Text>
+            </Pressable>
+
+            <View className="ml-3 min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 dark:border-slate-700 dark:bg-slate-900">
+              <Text className="text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {formatearRangoSemanaCorto(lunesSemanaSeleccionada)}
+              </Text>
+            </View>
+          </View>
+
           {/* Motor de búsqueda */}
           <TextInput
             value={busquedaAlumno}
@@ -964,17 +863,15 @@ export default function PantallaAsistencias() {
             autoCorrect={false}
             returnKeyType="search"
             accessibilityLabel="Buscar alumnos"
-            className="mt-5 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            className="mt-4 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
 
-          {/* Explicación de las casillas */}
           <View className="mt-3 rounded-xl bg-blue-50 px-4 py-3 dark:bg-slate-900">
             <Text className="text-center text-sm text-slate-600 dark:text-slate-300">
               Toca una casilla: vacío → ✓ presente → ✕ falta → vacío
             </Text>
           </View>
 
-          {/* Contenido */}
           <View className="mt-4 flex-1">
             {cargando ? (
               <View className="flex-1 items-center justify-center">
@@ -1020,9 +917,7 @@ export default function PantallaAsistencias() {
                   }}
                   className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                 >
-                  {/* Encabezados */}
                   <View className="flex-row bg-blue-50 dark:bg-slate-800">
-                    {/* Número */}
                     <View
                       style={{
                         width: ANCHO_NUMERO,
@@ -1034,7 +929,6 @@ export default function PantallaAsistencias() {
                       </Text>
                     </View>
 
-                    {/* Alumno */}
                     <View
                       style={{
                         width: ANCHO_NOMBRE,
@@ -1046,38 +940,6 @@ export default function PantallaAsistencias() {
                       </Text>
                     </View>
 
-                    {/*
-                     * Semanas
-                     *
-                     * Este botón aparece exactamente después de Alumno
-                     * y antes del primer día de la semana.
-                     */}
-                    <View
-                      style={{
-                        width: ANCHO_SEMANAS,
-                      }}
-                      className="items-center justify-center border-r border-slate-200 px-2 py-2 dark:border-slate-700"
-                    >
-                      <Pressable
-                        onPress={abrirSelectorSemanas}
-                        accessibilityRole="button"
-                        accessibilityLabel="Seleccionar semana de asistencia"
-                        className="w-full items-center justify-center rounded-xl bg-blue-600 px-2 py-2 active:opacity-70"
-                      >
-                        <Text className="text-center text-sm font-bold text-white">
-                          Semanas
-                        </Text>
-                      </Pressable>
-
-                      <Text
-                        numberOfLines={2}
-                        className="mt-1 text-center text-xs text-slate-600 dark:text-slate-300"
-                      >
-                        {formatearRangoSemanaCorto(lunesSemanaSeleccionada)}
-                      </Text>
-                    </View>
-
-                    {/* Días de la semana */}
                     {diasSemana.map((fecha) => {
                       const fechaTexto = formatearFechaBaseDatos(fecha);
 
@@ -1109,7 +971,6 @@ export default function PantallaAsistencias() {
                     })}
                   </View>
 
-                  {/* Filas de alumnos */}
                   <ScrollView
                     nestedScrollEnabled
                     showsVerticalScrollIndicator
@@ -1126,7 +987,6 @@ export default function PantallaAsistencias() {
                           key={alumno.id}
                           className="flex-row border-t border-slate-200 dark:border-slate-700"
                         >
-                          {/* Número progresivo */}
                           <View
                             style={{
                               width: ANCHO_NUMERO,
@@ -1141,7 +1001,6 @@ export default function PantallaAsistencias() {
                             </View>
                           </View>
 
-                          {/* Nombre */}
                           <View
                             style={{
                               width: ANCHO_NOMBRE,
@@ -1157,25 +1016,6 @@ export default function PantallaAsistencias() {
                             </Text>
                           </View>
 
-                          {/*
-                           * Columna correspondiente al botón Semanas.
-                           *
-                           * Se mantiene vacía en las filas para que
-                           * los días permanezcan perfectamente alineados.
-                           */}
-                          <View
-                            style={{
-                              width: ANCHO_SEMANAS,
-                              minHeight: 64,
-                            }}
-                            className="items-center justify-center border-r border-slate-200 px-2 dark:border-slate-700"
-                          >
-                            <Text className="text-center text-xs text-slate-400 dark:text-slate-500">
-                              —
-                            </Text>
-                          </View>
-
-                          {/* Casillas de asistencia */}
                           {diasSemana.map((fecha) => {
                             const fechaTexto = formatearFechaBaseDatos(fecha);
 
