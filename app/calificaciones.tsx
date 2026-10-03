@@ -1,9 +1,10 @@
 import { ejecutarConTiempoMaximo, obtenerBaseDatos } from "@/lib/database";
 import {
-    faArrowLeft,
-    faMoon,
-    faPlus,
-    faSun,
+  faArrowLeft,
+  faMoon,
+  faPlus,
+  faSun,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-native-fontawesome";
 import * as Crypto from "expo-crypto";
@@ -12,13 +13,14 @@ import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -42,6 +44,7 @@ type TrabajoCalificacion = {
   clase: string;
   nombre: string;
   posicion: number;
+  valor: number;
 };
 
 type RegistroCalificacion = {
@@ -53,6 +56,7 @@ type RegistroCalificacion = {
 const ANCHO_NUMERO = 55;
 const ANCHO_NOMBRE = 200;
 const ANCHO_TRABAJO = 145;
+const ANCHO_TOTAL = 120;
 
 const normalizarTexto = (texto: string) => {
   return texto
@@ -64,6 +68,34 @@ const normalizarTexto = (texto: string) => {
 
 const crearClaveCalificacion = (idAlumno: string, idTrabajo: string) => {
   return `${idAlumno}__${idTrabajo}`;
+};
+
+const convertirTextoANumero = (texto: string) => {
+  const textoLimpio = texto.trim().replace(",", ".");
+
+  if (!textoLimpio) {
+    return null;
+  }
+
+  const numero = Number(textoLimpio);
+
+  if (!Number.isFinite(numero)) {
+    return null;
+  }
+
+  return numero;
+};
+
+const formatearValor = (valor: number) => {
+  if (!Number.isFinite(valor)) {
+    return "0";
+  }
+
+  if (Number.isInteger(valor)) {
+    return String(valor);
+  }
+
+  return valor.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 };
 
 export default function PantallaCalificaciones() {
@@ -91,15 +123,25 @@ export default function PantallaCalificaciones() {
   const [calificaciones, setCalificaciones] = useState<Record<string, string>>(
     {},
   );
+
   const [busquedaAlumno, setBusquedaAlumno] = useState("");
   const [cargando, setCargando] = useState(true);
   const [agregandoTrabajo, setAgregandoTrabajo] = useState(false);
-  const [trabajosGuardando, setTrabajosGuardando] = useState<
-    Record<string, boolean>
-  >({});
+
   const [celdasGuardando, setCeldasGuardando] = useState<
     Record<string, boolean>
   >({});
+
+  const [trabajoConfigurando, setTrabajoConfigurando] =
+    useState<TrabajoCalificacion | null>(null);
+
+  const [nombreTrabajoConfigurando, setNombreTrabajoConfigurando] =
+    useState("");
+
+  const [valorTrabajoConfigurando, setValorTrabajoConfigurando] = useState("");
+
+  const [guardandoConfiguracion, setGuardandoConfiguracion] = useState(false);
+  const [eliminandoTrabajo, setEliminandoTrabajo] = useState(false);
 
   useEffect(() => {
     let componenteActivo = true;
@@ -140,6 +182,7 @@ export default function PantallaCalificaciones() {
               clase TEXT NOT NULL,
               nombre TEXT NOT NULL,
               posicion INTEGER NOT NULL DEFAULT 0,
+              valor REAL NOT NULL DEFAULT 0,
               FOREIGN KEY (clase)
                 REFERENCES clase(id)
                 ON DELETE CASCADE
@@ -194,6 +237,29 @@ export default function PantallaCalificaciones() {
           );
         }
 
+        /*
+         * Migración para instalaciones que ya tenían creada
+         * la tabla trabajos_calificaciones.
+         */
+        const columnasTrabajos = await ejecutarConTiempoMaximo(
+          db.getAllAsync<{ name: string }>(
+            "PRAGMA table_info(trabajos_calificaciones);",
+          ),
+        );
+
+        const existeColumnaValor = columnasTrabajos.some(
+          (columna) => columna.name === "valor",
+        );
+
+        if (!existeColumnaValor) {
+          await ejecutarConTiempoMaximo(
+            db.execAsync(`
+              ALTER TABLE trabajos_calificaciones
+              ADD COLUMN valor REAL NOT NULL DEFAULT 0;
+            `),
+          );
+        }
+
         const alumnosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<Alumno>(
             `
@@ -220,14 +286,15 @@ export default function PantallaCalificaciones() {
           ),
         );
 
-        let trabajosGuardados = await ejecutarConTiempoMaximo(
+        const trabajosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<TrabajoCalificacion>(
             `
               SELECT
                 id,
                 clase,
                 nombre,
-                posicion
+                posicion,
+                valor
               FROM trabajos_calificaciones
               WHERE clase = ?
               ORDER BY posicion ASC, rowid ASC;
@@ -235,34 +302,6 @@ export default function PantallaCalificaciones() {
             [idClase],
           ),
         );
-
-        if (trabajosGuardados.length === 0) {
-          const idTrabajoInicial = Crypto.randomUUID();
-
-          await ejecutarConTiempoMaximo(
-            db.runAsync(
-              `
-                INSERT INTO trabajos_calificaciones (
-                  id,
-                  clase,
-                  nombre,
-                  posicion
-                )
-                VALUES (?, ?, ?, ?);
-              `,
-              [idTrabajoInicial, idClase, "Trabajo 1", 1],
-            ),
-          );
-
-          trabajosGuardados = [
-            {
-              id: idTrabajoInicial,
-              clase: idClase,
-              nombre: "Trabajo 1",
-              posicion: 1,
-            },
-          ];
-        }
 
         const registrosGuardados = await ejecutarConTiempoMaximo(
           db.getAllAsync<RegistroCalificacion>(
@@ -291,7 +330,14 @@ export default function PantallaCalificaciones() {
 
         if (componenteActivo) {
           setAlumnos(alumnosGuardados);
-          setTrabajos(trabajosGuardados);
+
+          setTrabajos(
+            trabajosGuardados.map((trabajo) => ({
+              ...trabajo,
+              valor: Number(trabajo.valor ?? 0),
+            })),
+          );
+
           setCalificaciones(calificacionesCargadas);
         }
       } catch (error) {
@@ -351,6 +397,47 @@ export default function PantallaCalificaciones() {
     });
   }, [alumnos, busquedaAlumno, numeroPorAlumno]);
 
+  /*
+   * Calcula el total ponderado.
+   *
+   * Ejemplo:
+   * Calificación = 8
+   * Valor del trabajo = 25 %
+   * Aporta 2 puntos al Total.
+   *
+   * Si todos los valores suman 100 %, el resultado final
+   * permanece en la misma escala de las calificaciones.
+   */
+  const totalesPorAlumno = useMemo(() => {
+    const totales = new Map<string, number>();
+
+    alumnos.forEach((alumno) => {
+      let total = 0;
+
+      trabajos.forEach((trabajo) => {
+        const valorTrabajo = Number(trabajo.valor ?? 0);
+
+        if (!Number.isFinite(valorTrabajo) || valorTrabajo <= 0) {
+          return;
+        }
+
+        const clave = crearClaveCalificacion(alumno.id, trabajo.id);
+        const textoCalificacion = calificaciones[clave] ?? "";
+        const numeroCalificacion = convertirTextoANumero(textoCalificacion);
+
+        if (numeroCalificacion === null) {
+          return;
+        }
+
+        total += numeroCalificacion * (valorTrabajo / 100);
+      });
+
+      totales.set(alumno.id, total);
+    });
+
+    return totales;
+  }, [alumnos, trabajos, calificaciones]);
+
   const agregarTrabajo = async () => {
     if (!idClase || agregandoTrabajo) {
       return;
@@ -370,6 +457,7 @@ export default function PantallaCalificaciones() {
       clase: idClase,
       nombre: `Trabajo ${posicionNueva}`,
       posicion: posicionNueva,
+      valor: 0,
     };
 
     try {
@@ -382,15 +470,17 @@ export default function PantallaCalificaciones() {
               id,
               clase,
               nombre,
-              posicion
+              posicion,
+              valor
             )
-            VALUES (?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?);
           `,
           [
             nuevoTrabajo.id,
             nuevoTrabajo.clase,
             nuevoTrabajo.nombre,
             nuevoTrabajo.posicion,
+            nuevoTrabajo.valor,
           ],
         ),
       );
@@ -408,33 +498,59 @@ export default function PantallaCalificaciones() {
     }
   };
 
-  const cambiarNombreTrabajoLocal = (idTrabajo: string, nombre: string) => {
-    setTrabajos((trabajosActuales) =>
-      trabajosActuales.map((trabajo) =>
-        trabajo.id === idTrabajo
-          ? {
-              ...trabajo,
-              nombre,
-            }
-          : trabajo,
-      ),
-    );
-  };
-
-  const guardarNombreTrabajo = async (trabajo: TrabajoCalificacion) => {
-    if (trabajosGuardando[trabajo.id]) {
+  const abrirConfiguracionTrabajo = (trabajo: TrabajoCalificacion) => {
+    if (guardandoConfiguracion || eliminandoTrabajo) {
       return;
     }
 
-    const nombreLimpio = trabajo.nombre.trim();
-    const nombreFinal = nombreLimpio || `Trabajo ${trabajo.posicion}`;
+    setTrabajoConfigurando(trabajo);
+    setNombreTrabajoConfigurando(trabajo.nombre);
+    setValorTrabajoConfigurando(formatearValor(Number(trabajo.valor ?? 0)));
+  };
 
-    cambiarNombreTrabajoLocal(trabajo.id, nombreFinal);
+  const cerrarConfiguracionTrabajo = () => {
+    if (guardandoConfiguracion || eliminandoTrabajo) {
+      return;
+    }
 
-    setTrabajosGuardando((estadoActual) => ({
-      ...estadoActual,
-      [trabajo.id]: true,
-    }));
+    setTrabajoConfigurando(null);
+    setNombreTrabajoConfigurando("");
+    setValorTrabajoConfigurando("");
+  };
+
+  const guardarConfiguracionTrabajo = async () => {
+    if (!trabajoConfigurando || guardandoConfiguracion || eliminandoTrabajo) {
+      return;
+    }
+
+    const nombreLimpio = nombreTrabajoConfigurando.trim();
+
+    const nombreFinal =
+      nombreLimpio || `Trabajo ${trabajoConfigurando.posicion}`;
+
+    const valorTexto = valorTrabajoConfigurando.trim().replace(",", ".");
+
+    const valorNumerico = valorTexto === "" ? 0 : Number(valorTexto);
+
+    if (!Number.isFinite(valorNumerico)) {
+      Alert.alert(
+        "Valor no válido",
+        "Escribe un número válido para el valor del trabajo.",
+      );
+
+      return;
+    }
+
+    if (valorNumerico < 0 || valorNumerico > 100) {
+      Alert.alert(
+        "Valor no válido",
+        "El valor del trabajo debe estar entre 0 y 100 por ciento.",
+      );
+
+      return;
+    }
+
+    setGuardandoConfiguracion(true);
 
     try {
       const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
@@ -443,30 +559,126 @@ export default function PantallaCalificaciones() {
         db.runAsync(
           `
             UPDATE trabajos_calificaciones
-            SET nombre = ?
+            SET
+              nombre = ?,
+              valor = ?
             WHERE id = ?
               AND clase = ?;
           `,
-          [nombreFinal, trabajo.id, idClase],
+          [nombreFinal, valorNumerico, trabajoConfigurando.id, idClase],
         ),
       );
+
+      setTrabajos((trabajosActuales) =>
+        trabajosActuales.map((trabajo) =>
+          trabajo.id === trabajoConfigurando.id
+            ? {
+                ...trabajo,
+                nombre: nombreFinal,
+                valor: valorNumerico,
+              }
+            : trabajo,
+        ),
+      );
+
+      setTrabajoConfigurando(null);
+      setNombreTrabajoConfigurando("");
+      setValorTrabajoConfigurando("");
     } catch (error) {
-      console.error("Error al guardar el nombre del trabajo:", error);
+      console.error("Error al guardar la configuración del trabajo:", error);
 
       Alert.alert(
         "Error",
-        "No fue posible guardar el nombre del trabajo o proyecto.",
+        "No fue posible guardar la configuración del trabajo o proyecto.",
       );
     } finally {
-      setTrabajosGuardando((estadoActual) => {
-        const nuevoEstado = {
-          ...estadoActual,
+      setGuardandoConfiguracion(false);
+    }
+  };
+
+  const eliminarTrabajo = async (trabajo: TrabajoCalificacion) => {
+    if (eliminandoTrabajo || guardandoConfiguracion) {
+      return;
+    }
+
+    setEliminandoTrabajo(true);
+
+    try {
+      const db = await ejecutarConTiempoMaximo(obtenerBaseDatos());
+
+      /*
+       * Las calificaciones relacionadas se eliminan automáticamente
+       * mediante ON DELETE CASCADE.
+       */
+      await ejecutarConTiempoMaximo(
+        db.runAsync(
+          `
+            DELETE FROM trabajos_calificaciones
+            WHERE id = ?
+              AND clase = ?;
+          `,
+          [trabajo.id, idClase],
+        ),
+      );
+
+      setTrabajos((trabajosActuales) =>
+        trabajosActuales.filter(
+          (trabajoActual) => trabajoActual.id !== trabajo.id,
+        ),
+      );
+
+      setCalificaciones((calificacionesActuales) => {
+        const nuevasCalificaciones = {
+          ...calificacionesActuales,
         };
 
-        delete nuevoEstado[trabajo.id];
-        return nuevoEstado;
+        const terminacionClave = `__${trabajo.id}`;
+
+        Object.keys(nuevasCalificaciones).forEach((clave) => {
+          if (clave.endsWith(terminacionClave)) {
+            delete nuevasCalificaciones[clave];
+          }
+        });
+
+        return nuevasCalificaciones;
       });
+
+      setTrabajoConfigurando(null);
+      setNombreTrabajoConfigurando("");
+      setValorTrabajoConfigurando("");
+    } catch (error) {
+      console.error("Error al eliminar trabajo o proyecto:", error);
+
+      Alert.alert("Error", "No fue posible eliminar el trabajo o proyecto.");
+    } finally {
+      setEliminandoTrabajo(false);
     }
+  };
+
+  const confirmarEliminarTrabajo = () => {
+    if (!trabajoConfigurando || eliminandoTrabajo || guardandoConfiguracion) {
+      return;
+    }
+
+    const trabajo = trabajoConfigurando;
+
+    Alert.alert(
+      "Eliminar trabajo",
+      `¿Seguro que deseas eliminar "${trabajo.nombre}"? También se eliminarán las calificaciones capturadas en este trabajo.`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+            void eliminarTrabajo(trabajo);
+          },
+        },
+      ],
+    );
   };
 
   const cambiarCalificacionLocal = (
@@ -522,6 +734,7 @@ export default function PantallaCalificaciones() {
           };
 
           delete nuevasCalificaciones[clave];
+
           return nuevasCalificaciones;
         });
       } else {
@@ -563,13 +776,14 @@ export default function PantallaCalificaciones() {
         };
 
         delete nuevoEstado[clave];
+
         return nuevoEstado;
       });
     }
   };
 
   const anchoTabla =
-    ANCHO_NUMERO + ANCHO_NOMBRE + ANCHO_TRABAJO * Math.max(trabajos.length, 1);
+    ANCHO_NUMERO + ANCHO_NOMBRE + ANCHO_TRABAJO * trabajos.length + ANCHO_TOTAL;
 
   return (
     <>
@@ -578,6 +792,7 @@ export default function PantallaCalificaciones() {
           headerShown: false,
         }}
       />
+
       <SafeAreaView
         edges={["top", "left", "right", "bottom"]}
         style={{
@@ -590,6 +805,7 @@ export default function PantallaCalificaciones() {
           backgroundColor={modoOscuro ? "#020617" : "#f8fafc"}
           translucent={false}
         />
+
         <View className="flex-1 px-5 pb-4 pt-2">
           {/* Botón regresar y modo claro / oscuro */}
           <View className="flex-row items-center justify-between">
@@ -605,6 +821,7 @@ export default function PantallaCalificaciones() {
                 color={modoOscuro ? "#60a5fa" : "#2563eb"}
               />
             </Pressable>
+
             <Pressable
               onPress={toggleColorScheme}
               accessibilityRole="button"
@@ -661,6 +878,7 @@ export default function PantallaCalificaciones() {
               ) : (
                 <FontAwesomeIcon icon={faPlus} size={16} color="#ffffff" />
               )}
+
               <Text className="ml-2 font-bold text-white">
                 Agregar trabajo/proyecto
               </Text>
@@ -681,6 +899,7 @@ export default function PantallaCalificaciones() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   No hay alumnos registrados
                 </Text>
+
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   Agrega alumnos desde la pantalla Alumnos para capturar sus
                   calificaciones.
@@ -691,6 +910,7 @@ export default function PantallaCalificaciones() {
                 <Text className="text-center text-lg font-bold text-black dark:text-white">
                   Sin resultados
                 </Text>
+
                 <Text className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
                   No se encontraron alumnos con esa búsqueda.
                 </Text>
@@ -744,33 +964,40 @@ export default function PantallaCalificaciones() {
                           width: ANCHO_TRABAJO,
                           minHeight: 74,
                         }}
-                        className="items-center justify-center border-r border-slate-200 px-2 py-2 dark:border-slate-700"
+                        className="border-r border-slate-200 px-2 py-2 dark:border-slate-700"
                       >
-                        <TextInput
-                          value={trabajo.nombre}
-                          onChangeText={(texto) =>
-                            cambiarNombreTrabajoLocal(trabajo.id, texto)
-                          }
-                          onBlur={() => void guardarNombreTrabajo(trabajo)}
-                          placeholder="Trabajo / proyecto"
-                          placeholderTextColor={
-                            modoOscuro ? "#94a3b8" : "#64748b"
-                          }
-                          selectTextOnFocus
-                          accessibilityLabel={`Nombre del trabajo o proyecto ${trabajo.posicion}`}
-                          className="min-h-11 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-center text-sm font-bold text-black dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                        />
-                        {trabajosGuardando[trabajo.id] ? (
-                          <ActivityIndicator
-                            style={{
-                              marginTop: 4,
-                            }}
-                            size="small"
-                            color={modoOscuro ? "#60a5fa" : "#2563eb"}
-                          />
-                        ) : null}
+                        <Pressable
+                          onPress={() => abrirConfiguracionTrabajo(trabajo)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Configurar ${trabajo.nombre}`}
+                          className="min-h-14 flex-1 items-center justify-center rounded-lg border border-blue-200 bg-white px-2 py-2 active:opacity-70 dark:border-slate-600 dark:bg-slate-900"
+                        >
+                          <Text
+                            numberOfLines={2}
+                            className="text-center text-sm font-bold text-black dark:text-white"
+                          >
+                            {trabajo.nombre}
+                          </Text>
+
+                          <Text className="mt-1 text-center text-xs font-semibold text-blue-600 dark:text-blue-400">
+                            {formatearValor(Number(trabajo.valor ?? 0))}%
+                          </Text>
+                        </Pressable>
                       </View>
                     ))}
+
+                    {/* Encabezado TOTAL permanente */}
+                    <View
+                      style={{
+                        width: ANCHO_TOTAL,
+                        minHeight: 74,
+                      }}
+                      className="items-center justify-center px-2 py-2"
+                    >
+                      <Text className="text-center text-base font-bold text-blue-700 dark:text-blue-300">
+                        Total
+                      </Text>
+                    </View>
                   </View>
 
                   {/* Filas de alumnos */}
@@ -784,6 +1011,8 @@ export default function PantallaCalificaciones() {
                     {alumnosFiltrados.map((alumno, indiceFiltrado) => {
                       const numeroAlumno =
                         numeroPorAlumno.get(alumno.id) ?? indiceFiltrado + 1;
+
+                      const totalAlumno = totalesPorAlumno.get(alumno.id) ?? 0;
 
                       return (
                         <View
@@ -860,6 +1089,7 @@ export default function PantallaCalificaciones() {
                                     accessibilityLabel={`Calificación de ${alumno.nombre} en ${trabajo.nombre}`}
                                     className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-base font-semibold text-black dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                                   />
+
                                   {celdasGuardando[clave] ? (
                                     <ActivityIndicator
                                       style={{
@@ -873,6 +1103,19 @@ export default function PantallaCalificaciones() {
                               </View>
                             );
                           })}
+
+                          {/* Total del alumno */}
+                          <View
+                            style={{
+                              width: ANCHO_TOTAL,
+                              minHeight: 64,
+                            }}
+                            className="items-center justify-center bg-blue-50 px-2 py-2 dark:bg-slate-800"
+                          >
+                            <Text className="text-center text-base font-bold text-blue-700 dark:text-blue-300">
+                              {totalAlumno.toFixed(2)}
+                            </Text>
+                          </View>
                         </View>
                       );
                     })}
@@ -883,6 +1126,223 @@ export default function PantallaCalificaciones() {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* Ventana para editar/configurar/eliminar trabajo */}
+      <Modal
+        visible={trabajoConfigurando !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={cerrarConfiguracionTrabajo}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            paddingHorizontal: 22,
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: modoOscuro ? "#0f172a" : "#ffffff",
+              borderRadius: 20,
+              padding: 20,
+            }}
+          >
+            <Text
+              style={{
+                color: modoOscuro ? "#ffffff" : "#0f172a",
+                fontSize: 21,
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              Configurar trabajo
+            </Text>
+
+            <Text
+              style={{
+                marginTop: 20,
+                marginBottom: 7,
+                color: modoOscuro ? "#e2e8f0" : "#334155",
+                fontSize: 14,
+                fontWeight: "600",
+              }}
+            >
+              Nombre del trabajo
+            </Text>
+
+            <TextInput
+              value={nombreTrabajoConfigurando}
+              onChangeText={setNombreTrabajoConfigurando}
+              placeholder="Nombre del trabajo o proyecto"
+              placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
+              autoCapitalize="sentences"
+              autoCorrect
+              editable={!guardandoConfiguracion && !eliminandoTrabajo}
+              selectTextOnFocus
+              style={{
+                minHeight: 48,
+                borderWidth: 1,
+                borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                borderRadius: 12,
+                paddingHorizontal: 13,
+                paddingVertical: 10,
+                color: modoOscuro ? "#ffffff" : "#000000",
+                backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                fontSize: 16,
+              }}
+            />
+
+            <Text
+              style={{
+                marginTop: 17,
+                marginBottom: 7,
+                color: modoOscuro ? "#e2e8f0" : "#334155",
+                fontSize: 14,
+                fontWeight: "600",
+              }}
+            >
+              Valor del trabajo (%)
+            </Text>
+
+            <TextInput
+              value={valorTrabajoConfigurando}
+              onChangeText={setValorTrabajoConfigurando}
+              placeholder="Ejemplo: 20"
+              placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
+              keyboardType="decimal-pad"
+              autoCorrect={false}
+              editable={!guardandoConfiguracion && !eliminandoTrabajo}
+              selectTextOnFocus
+              maxLength={6}
+              style={{
+                minHeight: 48,
+                borderWidth: 1,
+                borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                borderRadius: 12,
+                paddingHorizontal: 13,
+                paddingVertical: 10,
+                color: modoOscuro ? "#ffffff" : "#000000",
+                backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                fontSize: 16,
+              }}
+            />
+
+            <Text
+              style={{
+                marginTop: 8,
+                color: modoOscuro ? "#94a3b8" : "#64748b",
+                fontSize: 12,
+                lineHeight: 17,
+              }}
+            >
+              El valor debe estar entre 0 y 100. Este porcentaje se utiliza
+              automáticamente para calcular la columna Total.
+            </Text>
+
+            {/* Eliminar trabajo */}
+            <Pressable
+              onPress={confirmarEliminarTrabajo}
+              disabled={guardandoConfiguracion || eliminandoTrabajo}
+              style={{
+                marginTop: 22,
+                minHeight: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: modoOscuro ? "#7f1d1d" : "#fecaca",
+                backgroundColor: modoOscuro ? "#450a0a" : "#fef2f2",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+              }}
+            >
+              {eliminandoTrabajo ? (
+                <ActivityIndicator size="small" color="#dc2626" />
+              ) : (
+                <FontAwesomeIcon icon={faTrash} size={16} color="#dc2626" />
+              )}
+
+              <Text
+                style={{
+                  marginLeft: 8,
+                  color: "#dc2626",
+                  fontSize: 15,
+                  fontWeight: "700",
+                }}
+              >
+                Eliminar trabajo
+              </Text>
+            </Pressable>
+
+            <View
+              style={{
+                marginTop: 18,
+                flexDirection: "row",
+              }}
+            >
+              <Pressable
+                onPress={cerrarConfiguracionTrabajo}
+                disabled={guardandoConfiguracion || eliminandoTrabajo}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 7,
+                  opacity:
+                    guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: modoOscuro ? "#e2e8f0" : "#334155",
+                    fontSize: 15,
+                    fontWeight: "700",
+                  }}
+                >
+                  Cancelar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => void guardarConfiguracionTrabajo()}
+                disabled={guardandoConfiguracion || eliminandoTrabajo}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  borderRadius: 12,
+                  backgroundColor: "#2563eb",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginLeft: 7,
+                  opacity:
+                    guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                }}
+              >
+                {guardandoConfiguracion ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text
+                    style={{
+                      color: "#ffffff",
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Guardar
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
