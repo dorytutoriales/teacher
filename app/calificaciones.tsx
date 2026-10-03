@@ -39,18 +39,41 @@ type Alumno = {
   posicion: number;
 };
 
+type TipoEvaluacion = "numerica" | "rubrica" | "verdadero_falso";
+
+type RubroEvaluacion = {
+  id: string;
+  nombre: string;
+  puntaje: number;
+};
+
+type RubroConfiguracion = {
+  id: string;
+  nombre: string;
+  puntaje: string;
+};
+
 type TrabajoCalificacion = {
   id: string;
   clase: string;
   nombre: string;
   posicion: number;
   valor: number;
+  calificacion_minima: number;
+  calificacion_maxima: number;
+  tipo_evaluacion: TipoEvaluacion;
+  rubrica_json: string;
 };
 
 type RegistroCalificacion = {
   alumno: string;
   trabajo: string;
   calificacion: string;
+};
+
+type SeleccionCalificacion = {
+  alumno: Alumno;
+  trabajo: TrabajoCalificacion;
 };
 
 const ANCHO_NUMERO = 55;
@@ -98,6 +121,195 @@ const formatearValor = (valor: number) => {
   return valor.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 };
 
+const normalizarTipoEvaluacion = (tipo: unknown): TipoEvaluacion => {
+  if (tipo === "rubrica" || tipo === "verdadero_falso") {
+    return tipo;
+  }
+
+  return "numerica";
+};
+
+const crearRubricaPredeterminada = (
+  calificacionMinima: number,
+  calificacionMaxima: number,
+): RubroEvaluacion[] => {
+  const minimo = Number.isFinite(calificacionMinima) ? calificacionMinima : 0;
+  const maximo =
+    Number.isFinite(calificacionMaxima) && calificacionMaxima > minimo
+      ? calificacionMaxima
+      : 10;
+
+  const rango = maximo - minimo;
+
+  const insuficiente = minimo + rango * 0.5;
+  const suficiente = minimo + rango * 0.7;
+
+  return [
+    {
+      id: "insuficiente",
+      nombre: "Insuficiente",
+      puntaje: Number(insuficiente.toFixed(2)),
+    },
+    {
+      id: "suficiente",
+      nombre: "Suficiente",
+      puntaje: Number(suficiente.toFixed(2)),
+    },
+    {
+      id: "excelente",
+      nombre: "Excelente",
+      puntaje: Number(maximo.toFixed(2)),
+    },
+  ];
+};
+
+const obtenerRubricaTrabajo = (trabajo: TrabajoCalificacion) => {
+  try {
+    const rubrica = JSON.parse(trabajo.rubrica_json || "[]") as unknown;
+
+    if (Array.isArray(rubrica)) {
+      const rubrosValidos = rubrica
+        .map((rubro) => {
+          if (!rubro || typeof rubro !== "object") {
+            return null;
+          }
+
+          const rubroObjeto = rubro as Record<string, unknown>;
+          const id = String(rubroObjeto.id ?? "").trim();
+          const nombre = String(rubroObjeto.nombre ?? "").trim();
+          const puntaje = Number(rubroObjeto.puntaje);
+
+          if (!id || !nombre || !Number.isFinite(puntaje)) {
+            return null;
+          }
+
+          return {
+            id,
+            nombre,
+            puntaje,
+          } satisfies RubroEvaluacion;
+        })
+        .filter((rubro): rubro is RubroEvaluacion => rubro !== null);
+
+      if (rubrosValidos.length > 0) {
+        return rubrosValidos;
+      }
+    }
+  } catch (error) {
+    console.error("Error al leer la rúbrica del trabajo:", error);
+  }
+
+  return crearRubricaPredeterminada(
+    Number(trabajo.calificacion_minima ?? 0),
+    Number(trabajo.calificacion_maxima ?? 10),
+  );
+};
+
+const obtenerPuntajeCalificacion = (
+  trabajo: TrabajoCalificacion,
+  calificacionGuardada: string,
+) => {
+  const valor = calificacionGuardada.trim();
+
+  if (!valor) {
+    return null;
+  }
+
+  if (valor === "verdadero") {
+    return Number(trabajo.calificacion_maxima ?? 10);
+  }
+
+  if (valor === "falso") {
+    return Number(trabajo.calificacion_minima ?? 0);
+  }
+
+  if (valor.startsWith("rubrica:")) {
+    const idRubro = valor.slice("rubrica:".length);
+    const rubro = obtenerRubricaTrabajo(trabajo).find(
+      (elemento) => elemento.id === idRubro,
+    );
+
+    if (rubro) {
+      return rubro.puntaje;
+    }
+
+    return null;
+  }
+
+  return convertirTextoANumero(valor);
+};
+
+const obtenerTextoEntradaNumerica = (
+  trabajo: TrabajoCalificacion,
+  calificacionGuardada: string,
+) => {
+  const valor = calificacionGuardada.trim();
+
+  if (!valor) {
+    return "";
+  }
+
+  if (
+    valor === "verdadero" ||
+    valor === "falso" ||
+    valor.startsWith("rubrica:")
+  ) {
+    const puntaje = obtenerPuntajeCalificacion(trabajo, valor);
+    return puntaje === null ? "" : formatearValor(puntaje);
+  }
+
+  return valor;
+};
+
+const obtenerTextoCalificacion = (
+  trabajo: TrabajoCalificacion,
+  calificacionGuardada: string,
+) => {
+  const valor = calificacionGuardada.trim();
+
+  if (!valor) {
+    return "";
+  }
+
+  if (trabajo.tipo_evaluacion === "verdadero_falso") {
+    if (valor === "verdadero") {
+      return "Verdadero";
+    }
+
+    if (valor === "falso") {
+      return "Falso";
+    }
+  }
+
+  if (trabajo.tipo_evaluacion === "rubrica" && valor.startsWith("rubrica:")) {
+    const idRubro = valor.slice("rubrica:".length);
+    const rubro = obtenerRubricaTrabajo(trabajo).find(
+      (elemento) => elemento.id === idRubro,
+    );
+
+    if (rubro) {
+      return `${rubro.nombre}\n${formatearValor(rubro.puntaje)}`;
+    }
+  }
+
+  return valor;
+};
+
+const obtenerDescripcionTipoEvaluacion = (trabajo: TrabajoCalificacion) => {
+  const minimo = formatearValor(Number(trabajo.calificacion_minima ?? 0));
+  const maximo = formatearValor(Number(trabajo.calificacion_maxima ?? 10));
+
+  if (trabajo.tipo_evaluacion === "rubrica") {
+    return `Rúbrica · ${minimo}-${maximo}`;
+  }
+
+  if (trabajo.tipo_evaluacion === "verdadero_falso") {
+    return `V/F · ${minimo}-${maximo}`;
+  }
+
+  return `${minimo}-${maximo}`;
+};
+
 export default function PantallaCalificaciones() {
   const router = useRouter();
   const parametros = useLocalSearchParams<ParametrosCalificaciones>();
@@ -138,7 +350,21 @@ export default function PantallaCalificaciones() {
   const [nombreTrabajoConfigurando, setNombreTrabajoConfigurando] =
     useState("");
 
-  const [valorTrabajoConfigurando, setValorTrabajoConfigurando] = useState("");
+  const [calificacionMinimaConfigurando, setCalificacionMinimaConfigurando] =
+    useState("0");
+
+  const [calificacionMaximaConfigurando, setCalificacionMaximaConfigurando] =
+    useState("10");
+
+  const [tipoEvaluacionConfigurando, setTipoEvaluacionConfigurando] =
+    useState<TipoEvaluacion>("numerica");
+
+  const [rubrosTrabajoConfigurando, setRubrosTrabajoConfigurando] = useState<
+    RubroConfiguracion[]
+  >([]);
+
+  const [seleccionCalificacion, setSeleccionCalificacion] =
+    useState<SeleccionCalificacion | null>(null);
 
   const [guardandoConfiguracion, setGuardandoConfiguracion] = useState(false);
   const [eliminandoTrabajo, setEliminandoTrabajo] = useState(false);
@@ -183,6 +409,10 @@ export default function PantallaCalificaciones() {
               nombre TEXT NOT NULL,
               posicion INTEGER NOT NULL DEFAULT 0,
               valor REAL NOT NULL DEFAULT 0,
+              calificacion_minima REAL NOT NULL DEFAULT 0,
+              calificacion_maxima REAL NOT NULL DEFAULT 10,
+              tipo_evaluacion TEXT NOT NULL DEFAULT 'numerica',
+              rubrica_json TEXT NOT NULL DEFAULT '[]',
               FOREIGN KEY (clase)
                 REFERENCES clase(id)
                 ON DELETE CASCADE
@@ -238,7 +468,7 @@ export default function PantallaCalificaciones() {
         }
 
         /*
-         * Migración para instalaciones que ya tenían creada
+         * Migraciones para instalaciones que ya tenían creada
          * la tabla trabajos_calificaciones.
          */
         const columnasTrabajos = await ejecutarConTiempoMaximo(
@@ -256,6 +486,58 @@ export default function PantallaCalificaciones() {
             db.execAsync(`
               ALTER TABLE trabajos_calificaciones
               ADD COLUMN valor REAL NOT NULL DEFAULT 0;
+            `),
+          );
+        }
+
+        const existeColumnaCalificacionMinima = columnasTrabajos.some(
+          (columna) => columna.name === "calificacion_minima",
+        );
+
+        if (!existeColumnaCalificacionMinima) {
+          await ejecutarConTiempoMaximo(
+            db.execAsync(`
+              ALTER TABLE trabajos_calificaciones
+              ADD COLUMN calificacion_minima REAL NOT NULL DEFAULT 0;
+            `),
+          );
+        }
+
+        const existeColumnaCalificacionMaxima = columnasTrabajos.some(
+          (columna) => columna.name === "calificacion_maxima",
+        );
+
+        if (!existeColumnaCalificacionMaxima) {
+          await ejecutarConTiempoMaximo(
+            db.execAsync(`
+              ALTER TABLE trabajos_calificaciones
+              ADD COLUMN calificacion_maxima REAL NOT NULL DEFAULT 10;
+            `),
+          );
+        }
+
+        const existeColumnaTipoEvaluacion = columnasTrabajos.some(
+          (columna) => columna.name === "tipo_evaluacion",
+        );
+
+        if (!existeColumnaTipoEvaluacion) {
+          await ejecutarConTiempoMaximo(
+            db.execAsync(`
+              ALTER TABLE trabajos_calificaciones
+              ADD COLUMN tipo_evaluacion TEXT NOT NULL DEFAULT 'numerica';
+            `),
+          );
+        }
+
+        const existeColumnaRubricaJson = columnasTrabajos.some(
+          (columna) => columna.name === "rubrica_json",
+        );
+
+        if (!existeColumnaRubricaJson) {
+          await ejecutarConTiempoMaximo(
+            db.execAsync(`
+              ALTER TABLE trabajos_calificaciones
+              ADD COLUMN rubrica_json TEXT NOT NULL DEFAULT '[]';
             `),
           );
         }
@@ -294,7 +576,11 @@ export default function PantallaCalificaciones() {
                 clase,
                 nombre,
                 posicion,
-                valor
+                valor,
+                calificacion_minima,
+                calificacion_maxima,
+                tipo_evaluacion,
+                rubrica_json
               FROM trabajos_calificaciones
               WHERE clase = ?
               ORDER BY posicion ASC, rowid ASC;
@@ -335,6 +621,15 @@ export default function PantallaCalificaciones() {
             trabajosGuardados.map((trabajo) => ({
               ...trabajo,
               valor: Number(trabajo.valor ?? 0),
+              calificacion_minima: Number(trabajo.calificacion_minima ?? 0),
+              calificacion_maxima: Number(trabajo.calificacion_maxima ?? 10),
+              tipo_evaluacion: normalizarTipoEvaluacion(
+                trabajo.tipo_evaluacion,
+              ),
+              rubrica_json:
+                typeof trabajo.rubrica_json === "string"
+                  ? trabajo.rubrica_json
+                  : "[]",
             })),
           );
 
@@ -398,41 +693,44 @@ export default function PantallaCalificaciones() {
   }, [alumnos, busquedaAlumno, numeroPorAlumno]);
 
   /*
-   * Calcula el total ponderado.
-   *
-   * Ejemplo:
-   * Calificación = 8
-   * Valor del trabajo = 25 %
-   * Aporta 2 puntos al Total.
-   *
-   * Si todos los valores suman 100 %, el resultado final
-   * permanece en la misma escala de las calificaciones.
+   * Calcula el Total como promedio de los trabajos evaluados.
+   * Cada trabajo se convierte proporcionalmente a escala 0-10
+   * usando la calificación máxima configurada para ese trabajo.
    */
   const totalesPorAlumno = useMemo(() => {
     const totales = new Map<string, number>();
 
     alumnos.forEach((alumno) => {
-      let total = 0;
+      let suma = 0;
+      let trabajosEvaluados = 0;
 
       trabajos.forEach((trabajo) => {
-        const valorTrabajo = Number(trabajo.valor ?? 0);
-
-        if (!Number.isFinite(valorTrabajo) || valorTrabajo <= 0) {
-          return;
-        }
-
         const clave = crearClaveCalificacion(alumno.id, trabajo.id);
-        const textoCalificacion = calificaciones[clave] ?? "";
-        const numeroCalificacion = convertirTextoANumero(textoCalificacion);
+        const calificacionGuardada = calificaciones[clave] ?? "";
+        const puntaje = obtenerPuntajeCalificacion(
+          trabajo,
+          calificacionGuardada,
+        );
 
-        if (numeroCalificacion === null) {
+        const calificacionMaxima = Number(trabajo.calificacion_maxima ?? 10);
+
+        if (
+          puntaje === null ||
+          !Number.isFinite(puntaje) ||
+          !Number.isFinite(calificacionMaxima) ||
+          calificacionMaxima <= 0
+        ) {
           return;
         }
 
-        total += numeroCalificacion * (valorTrabajo / 100);
+        suma += (puntaje / calificacionMaxima) * 10;
+        trabajosEvaluados += 1;
       });
 
-      totales.set(alumno.id, total);
+      totales.set(
+        alumno.id,
+        trabajosEvaluados > 0 ? suma / trabajosEvaluados : 0,
+      );
     });
 
     return totales;
@@ -452,12 +750,18 @@ export default function PantallaCalificaciones() {
         0,
       ) + 1;
 
+    const rubricaPredeterminada = crearRubricaPredeterminada(0, 10);
+
     const nuevoTrabajo: TrabajoCalificacion = {
       id: Crypto.randomUUID(),
       clase: idClase,
       nombre: `Trabajo ${posicionNueva}`,
       posicion: posicionNueva,
       valor: 0,
+      calificacion_minima: 0,
+      calificacion_maxima: 10,
+      tipo_evaluacion: "numerica",
+      rubrica_json: JSON.stringify(rubricaPredeterminada),
     };
 
     try {
@@ -471,9 +775,13 @@ export default function PantallaCalificaciones() {
               clase,
               nombre,
               posicion,
-              valor
+              valor,
+              calificacion_minima,
+              calificacion_maxima,
+              tipo_evaluacion,
+              rubrica_json
             )
-            VALUES (?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
           `,
           [
             nuevoTrabajo.id,
@@ -481,6 +789,10 @@ export default function PantallaCalificaciones() {
             nuevoTrabajo.nombre,
             nuevoTrabajo.posicion,
             nuevoTrabajo.valor,
+            nuevoTrabajo.calificacion_minima,
+            nuevoTrabajo.calificacion_maxima,
+            nuevoTrabajo.tipo_evaluacion,
+            nuevoTrabajo.rubrica_json,
           ],
         ),
       );
@@ -505,7 +817,31 @@ export default function PantallaCalificaciones() {
 
     setTrabajoConfigurando(trabajo);
     setNombreTrabajoConfigurando(trabajo.nombre);
-    setValorTrabajoConfigurando(formatearValor(Number(trabajo.valor ?? 0)));
+    setCalificacionMinimaConfigurando(
+      formatearValor(Number(trabajo.calificacion_minima ?? 0)),
+    );
+    setCalificacionMaximaConfigurando(
+      formatearValor(Number(trabajo.calificacion_maxima ?? 10)),
+    );
+    setTipoEvaluacionConfigurando(
+      normalizarTipoEvaluacion(trabajo.tipo_evaluacion),
+    );
+    setRubrosTrabajoConfigurando(
+      obtenerRubricaTrabajo(trabajo).map((rubro) => ({
+        id: rubro.id,
+        nombre: rubro.nombre,
+        puntaje: formatearValor(rubro.puntaje),
+      })),
+    );
+  };
+
+  const limpiarConfiguracionTrabajo = () => {
+    setTrabajoConfigurando(null);
+    setNombreTrabajoConfigurando("");
+    setCalificacionMinimaConfigurando("0");
+    setCalificacionMaximaConfigurando("10");
+    setTipoEvaluacionConfigurando("numerica");
+    setRubrosTrabajoConfigurando([]);
   };
 
   const cerrarConfiguracionTrabajo = () => {
@@ -513,9 +849,58 @@ export default function PantallaCalificaciones() {
       return;
     }
 
-    setTrabajoConfigurando(null);
-    setNombreTrabajoConfigurando("");
-    setValorTrabajoConfigurando("");
+    limpiarConfiguracionTrabajo();
+  };
+
+  const agregarRubro = () => {
+    if (guardandoConfiguracion || eliminandoTrabajo) {
+      return;
+    }
+
+    setRubrosTrabajoConfigurando((rubrosActuales) => [
+      ...rubrosActuales,
+      {
+        id: Crypto.randomUUID(),
+        nombre: `Rubro ${rubrosActuales.length + 1}`,
+        puntaje: calificacionMaximaConfigurando || "10",
+      },
+    ]);
+  };
+
+  const editarNombreRubro = (idRubro: string, nombre: string) => {
+    setRubrosTrabajoConfigurando((rubrosActuales) =>
+      rubrosActuales.map((rubro) =>
+        rubro.id === idRubro
+          ? {
+              ...rubro,
+              nombre,
+            }
+          : rubro,
+      ),
+    );
+  };
+
+  const editarPuntajeRubro = (idRubro: string, puntaje: string) => {
+    setRubrosTrabajoConfigurando((rubrosActuales) =>
+      rubrosActuales.map((rubro) =>
+        rubro.id === idRubro
+          ? {
+              ...rubro,
+              puntaje,
+            }
+          : rubro,
+      ),
+    );
+  };
+
+  const eliminarRubro = (idRubro: string) => {
+    if (guardandoConfiguracion || eliminandoTrabajo) {
+      return;
+    }
+
+    setRubrosTrabajoConfigurando((rubrosActuales) =>
+      rubrosActuales.filter((rubro) => rubro.id !== idRubro),
+    );
   };
 
   const guardarConfiguracionTrabajo = async () => {
@@ -528,27 +913,96 @@ export default function PantallaCalificaciones() {
     const nombreFinal =
       nombreLimpio || `Trabajo ${trabajoConfigurando.posicion}`;
 
-    const valorTexto = valorTrabajoConfigurando.trim().replace(",", ".");
+    const minima = convertirTextoANumero(calificacionMinimaConfigurando);
+    const maxima = convertirTextoANumero(calificacionMaximaConfigurando);
 
-    const valorNumerico = valorTexto === "" ? 0 : Number(valorTexto);
-
-    if (!Number.isFinite(valorNumerico)) {
+    if (minima === null || maxima === null) {
       Alert.alert(
-        "Valor no válido",
-        "Escribe un número válido para el valor del trabajo.",
+        "Escala no válida",
+        "Escribe números válidos para la calificación mínima y máxima.",
       );
 
       return;
     }
 
-    if (valorNumerico < 0 || valorNumerico > 100) {
+    if (minima < 0) {
       Alert.alert(
-        "Valor no válido",
-        "El valor del trabajo debe estar entre 0 y 100 por ciento.",
+        "Escala no válida",
+        "La calificación mínima no puede ser menor que 0.",
       );
 
       return;
     }
+
+    if (maxima <= minima) {
+      Alert.alert(
+        "Escala no válida",
+        "La calificación máxima debe ser mayor que la calificación mínima.",
+      );
+
+      return;
+    }
+
+    const rubrosFinales: RubroEvaluacion[] = [];
+
+    for (
+      let indice = 0;
+      indice < rubrosTrabajoConfigurando.length;
+      indice += 1
+    ) {
+      const rubro = rubrosTrabajoConfigurando[indice];
+      const nombreRubro = rubro.nombre.trim();
+      const puntajeRubro = convertirTextoANumero(rubro.puntaje);
+
+      if (!nombreRubro) {
+        Alert.alert(
+          "Rúbrica no válida",
+          `Escribe un nombre para el rubro ${indice + 1}.`,
+        );
+
+        return;
+      }
+
+      if (puntajeRubro === null) {
+        Alert.alert(
+          "Rúbrica no válida",
+          `Escribe un puntaje válido para el rubro "${nombreRubro}".`,
+        );
+
+        return;
+      }
+
+      if (puntajeRubro < minima || puntajeRubro > maxima) {
+        Alert.alert(
+          "Rúbrica no válida",
+          `El puntaje de "${nombreRubro}" debe estar entre ${formatearValor(
+            minima,
+          )} y ${formatearValor(maxima)}.`,
+        );
+
+        return;
+      }
+
+      rubrosFinales.push({
+        id: rubro.id || Crypto.randomUUID(),
+        nombre: nombreRubro,
+        puntaje: puntajeRubro,
+      });
+    }
+
+    if (
+      tipoEvaluacionConfigurando === "rubrica" &&
+      rubrosFinales.length === 0
+    ) {
+      Alert.alert(
+        "Rúbrica vacía",
+        "Agrega al menos un rubro para poder evaluar mediante rúbrica.",
+      );
+
+      return;
+    }
+
+    const rubricaJson = JSON.stringify(rubrosFinales);
 
     setGuardandoConfiguracion(true);
 
@@ -561,11 +1015,22 @@ export default function PantallaCalificaciones() {
             UPDATE trabajos_calificaciones
             SET
               nombre = ?,
-              valor = ?
+              calificacion_minima = ?,
+              calificacion_maxima = ?,
+              tipo_evaluacion = ?,
+              rubrica_json = ?
             WHERE id = ?
               AND clase = ?;
           `,
-          [nombreFinal, valorNumerico, trabajoConfigurando.id, idClase],
+          [
+            nombreFinal,
+            minima,
+            maxima,
+            tipoEvaluacionConfigurando,
+            rubricaJson,
+            trabajoConfigurando.id,
+            idClase,
+          ],
         ),
       );
 
@@ -575,15 +1040,16 @@ export default function PantallaCalificaciones() {
             ? {
                 ...trabajo,
                 nombre: nombreFinal,
-                valor: valorNumerico,
+                calificacion_minima: minima,
+                calificacion_maxima: maxima,
+                tipo_evaluacion: tipoEvaluacionConfigurando,
+                rubrica_json: rubricaJson,
               }
             : trabajo,
         ),
       );
 
-      setTrabajoConfigurando(null);
-      setNombreTrabajoConfigurando("");
-      setValorTrabajoConfigurando("");
+      limpiarConfiguracionTrabajo();
     } catch (error) {
       console.error("Error al guardar la configuración del trabajo:", error);
 
@@ -643,9 +1109,7 @@ export default function PantallaCalificaciones() {
         return nuevasCalificaciones;
       });
 
-      setTrabajoConfigurando(null);
-      setNombreTrabajoConfigurando("");
-      setValorTrabajoConfigurando("");
+      limpiarConfiguracionTrabajo();
     } catch (error) {
       console.error("Error al eliminar trabajo o proyecto:", error);
 
@@ -780,6 +1244,79 @@ export default function PantallaCalificaciones() {
         return nuevoEstado;
       });
     }
+  };
+
+  const guardarCalificacionNumerica = async (
+    alumno: Alumno,
+    trabajo: TrabajoCalificacion,
+  ) => {
+    const clave = crearClaveCalificacion(alumno.id, trabajo.id);
+    const texto = calificaciones[clave] ?? "";
+    const textoLimpio = texto.trim();
+
+    if (!textoLimpio) {
+      await guardarCalificacion(alumno.id, trabajo.id, "");
+      return;
+    }
+
+    const numero = obtenerPuntajeCalificacion(trabajo, textoLimpio);
+    const minima = Number(trabajo.calificacion_minima ?? 0);
+    const maxima = Number(trabajo.calificacion_maxima ?? 10);
+
+    if (numero === null) {
+      Alert.alert(
+        "Calificación no válida",
+        `Escribe un número entre ${formatearValor(minima)} y ${formatearValor(
+          maxima,
+        )}.`,
+      );
+      return;
+    }
+
+    if (numero < minima || numero > maxima) {
+      Alert.alert(
+        "Calificación fuera de rango",
+        `La calificación debe estar entre ${formatearValor(
+          minima,
+        )} y ${formatearValor(maxima)}.`,
+      );
+      return;
+    }
+
+    await guardarCalificacion(alumno.id, trabajo.id, formatearValor(numero));
+  };
+
+  const seleccionarRubro = async (rubro: RubroEvaluacion) => {
+    if (!seleccionCalificacion) {
+      return;
+    }
+
+    const { alumno, trabajo } = seleccionCalificacion;
+    setSeleccionCalificacion(null);
+
+    await guardarCalificacion(alumno.id, trabajo.id, `rubrica:${rubro.id}`);
+  };
+
+  const seleccionarVerdaderoFalso = async (valor: "verdadero" | "falso") => {
+    if (!seleccionCalificacion) {
+      return;
+    }
+
+    const { alumno, trabajo } = seleccionCalificacion;
+    setSeleccionCalificacion(null);
+
+    await guardarCalificacion(alumno.id, trabajo.id, valor);
+  };
+
+  const limpiarCalificacionSeleccionada = async () => {
+    if (!seleccionCalificacion) {
+      return;
+    }
+
+    const { alumno, trabajo } = seleccionCalificacion;
+    setSeleccionCalificacion(null);
+
+    await guardarCalificacion(alumno.id, trabajo.id, "");
   };
 
   const anchoTabla =
@@ -980,7 +1517,7 @@ export default function PantallaCalificaciones() {
                           </Text>
 
                           <Text className="mt-1 text-center text-xs font-semibold text-blue-600 dark:text-blue-400">
-                            {formatearValor(Number(trabajo.valor ?? 0))}%
+                            {obtenerDescripcionTipoEvaluacion(trabajo)}
                           </Text>
                         </Pressable>
                       </View>
@@ -1054,6 +1591,9 @@ export default function PantallaCalificaciones() {
                               trabajo.id,
                             );
 
+                            const calificacionGuardada =
+                              calificaciones[clave] ?? "";
+
                             return (
                               <View
                                 key={clave}
@@ -1063,43 +1603,94 @@ export default function PantallaCalificaciones() {
                                 }}
                                 className="items-center justify-center border-r border-slate-200 px-2 py-2 dark:border-slate-700"
                               >
-                                <View className="w-full flex-row items-center">
-                                  <TextInput
-                                    value={calificaciones[clave] ?? ""}
-                                    onChangeText={(texto) =>
-                                      cambiarCalificacionLocal(
-                                        alumno.id,
-                                        trabajo.id,
-                                        texto,
-                                      )
-                                    }
-                                    onBlur={() =>
-                                      void guardarCalificacion(
-                                        alumno.id,
-                                        trabajo.id,
-                                        calificaciones[clave] ?? "",
-                                      )
-                                    }
-                                    placeholder="Calificación"
-                                    placeholderTextColor={
-                                      modoOscuro ? "#64748b" : "#94a3b8"
-                                    }
-                                    autoCorrect={false}
-                                    maxLength={12}
-                                    accessibilityLabel={`Calificación de ${alumno.nombre} en ${trabajo.nombre}`}
-                                    className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-base font-semibold text-black dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                                  />
-
-                                  {celdasGuardando[clave] ? (
-                                    <ActivityIndicator
-                                      style={{
-                                        marginLeft: 5,
-                                      }}
-                                      size="small"
-                                      color={modoOscuro ? "#60a5fa" : "#2563eb"}
+                                {trabajo.tipo_evaluacion === "numerica" ? (
+                                  <View className="w-full flex-row items-center">
+                                    <TextInput
+                                      value={obtenerTextoEntradaNumerica(
+                                        trabajo,
+                                        calificacionGuardada,
+                                      )}
+                                      onChangeText={(texto) =>
+                                        cambiarCalificacionLocal(
+                                          alumno.id,
+                                          trabajo.id,
+                                          texto,
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        void guardarCalificacionNumerica(
+                                          alumno,
+                                          trabajo,
+                                        )
+                                      }
+                                      placeholder={`${formatearValor(
+                                        Number(
+                                          trabajo.calificacion_minima ?? 0,
+                                        ),
+                                      )}-${formatearValor(
+                                        Number(
+                                          trabajo.calificacion_maxima ?? 10,
+                                        ),
+                                      )}`}
+                                      placeholderTextColor={
+                                        modoOscuro ? "#64748b" : "#94a3b8"
+                                      }
+                                      keyboardType="decimal-pad"
+                                      autoCorrect={false}
+                                      maxLength={12}
+                                      accessibilityLabel={`Calificación de ${alumno.nombre} en ${trabajo.nombre}`}
+                                      className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-base font-semibold text-black dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                                     />
-                                  ) : null}
-                                </View>
+
+                                    {celdasGuardando[clave] ? (
+                                      <ActivityIndicator
+                                        style={{
+                                          marginLeft: 5,
+                                        }}
+                                        size="small"
+                                        color={
+                                          modoOscuro ? "#60a5fa" : "#2563eb"
+                                        }
+                                      />
+                                    ) : null}
+                                  </View>
+                                ) : (
+                                  <View className="w-full flex-row items-center">
+                                    <Pressable
+                                      onPress={() =>
+                                        setSeleccionCalificacion({
+                                          alumno,
+                                          trabajo,
+                                        })
+                                      }
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Seleccionar calificación de ${alumno.nombre} en ${trabajo.nombre}`}
+                                      className="min-h-11 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 py-2 active:opacity-70 dark:border-slate-600 dark:bg-slate-800"
+                                    >
+                                      <Text
+                                        numberOfLines={2}
+                                        className="text-center text-sm font-semibold text-black dark:text-white"
+                                      >
+                                        {obtenerTextoCalificacion(
+                                          trabajo,
+                                          calificacionGuardada,
+                                        ) || "Seleccionar"}
+                                      </Text>
+                                    </Pressable>
+
+                                    {celdasGuardando[clave] ? (
+                                      <ActivityIndicator
+                                        style={{
+                                          marginLeft: 5,
+                                        }}
+                                        size="small"
+                                        color={
+                                          modoOscuro ? "#60a5fa" : "#2563eb"
+                                        }
+                                      />
+                                    ) : null}
+                                  </View>
+                                )}
                               </View>
                             );
                           })}
@@ -1145,6 +1736,674 @@ export default function PantallaCalificaciones() {
         >
           <View
             style={{
+              maxHeight: "90%",
+              backgroundColor: modoOscuro ? "#0f172a" : "#ffffff",
+              borderRadius: 20,
+            }}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                padding: 20,
+              }}
+              showsVerticalScrollIndicator
+            >
+              <Text
+                style={{
+                  color: modoOscuro ? "#ffffff" : "#0f172a",
+                  fontSize: 21,
+                  fontWeight: "700",
+                  textAlign: "center",
+                }}
+              >
+                Configurar trabajo
+              </Text>
+
+              <Text
+                style={{
+                  marginTop: 20,
+                  marginBottom: 7,
+                  color: modoOscuro ? "#e2e8f0" : "#334155",
+                  fontSize: 14,
+                  fontWeight: "600",
+                }}
+              >
+                Nombre del trabajo
+              </Text>
+
+              <TextInput
+                value={nombreTrabajoConfigurando}
+                onChangeText={setNombreTrabajoConfigurando}
+                placeholder="Nombre del trabajo o proyecto"
+                placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
+                autoCapitalize="sentences"
+                autoCorrect
+                editable={!guardandoConfiguracion && !eliminandoTrabajo}
+                selectTextOnFocus
+                style={{
+                  minHeight: 48,
+                  borderWidth: 1,
+                  borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                  borderRadius: 12,
+                  paddingHorizontal: 13,
+                  paddingVertical: 10,
+                  color: modoOscuro ? "#ffffff" : "#000000",
+                  backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                  fontSize: 16,
+                }}
+              />
+
+              <Text
+                style={{
+                  marginTop: 17,
+                  marginBottom: 7,
+                  color: modoOscuro ? "#e2e8f0" : "#334155",
+                  fontSize: 14,
+                  fontWeight: "600",
+                }}
+              >
+                Escala de calificación
+              </Text>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 7 }}>
+                  <Text
+                    style={{
+                      marginBottom: 6,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Calificación más baja
+                  </Text>
+
+                  <TextInput
+                    value={calificacionMinimaConfigurando}
+                    onChangeText={setCalificacionMinimaConfigurando}
+                    placeholder="0"
+                    placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
+                    keyboardType="decimal-pad"
+                    autoCorrect={false}
+                    editable={!guardandoConfiguracion && !eliminandoTrabajo}
+                    selectTextOnFocus
+                    maxLength={10}
+                    style={{
+                      minHeight: 48,
+                      borderWidth: 1,
+                      borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                      borderRadius: 12,
+                      paddingHorizontal: 13,
+                      paddingVertical: 10,
+                      color: modoOscuro ? "#ffffff" : "#000000",
+                      backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                      fontSize: 16,
+                    }}
+                  />
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 7 }}>
+                  <Text
+                    style={{
+                      marginBottom: 6,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Calificación más alta
+                  </Text>
+
+                  <TextInput
+                    value={calificacionMaximaConfigurando}
+                    onChangeText={setCalificacionMaximaConfigurando}
+                    placeholder="10"
+                    placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
+                    keyboardType="decimal-pad"
+                    autoCorrect={false}
+                    editable={!guardandoConfiguracion && !eliminandoTrabajo}
+                    selectTextOnFocus
+                    maxLength={10}
+                    style={{
+                      minHeight: 48,
+                      borderWidth: 1,
+                      borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                      borderRadius: 12,
+                      paddingHorizontal: 13,
+                      paddingVertical: 10,
+                      color: modoOscuro ? "#ffffff" : "#000000",
+                      backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                      fontSize: 16,
+                    }}
+                  />
+                </View>
+              </View>
+
+              <Text
+                style={{
+                  marginTop: 17,
+                  marginBottom: 8,
+                  color: modoOscuro ? "#e2e8f0" : "#334155",
+                  fontSize: 14,
+                  fontWeight: "600",
+                }}
+              >
+                Tipo de evaluación
+              </Text>
+
+              <View>
+                <Pressable
+                  onPress={() => setTipoEvaluacionConfigurando("numerica")}
+                  disabled={guardandoConfiguracion || eliminandoTrabajo}
+                  style={{
+                    minHeight: 48,
+                    borderWidth: 1,
+                    borderColor:
+                      tipoEvaluacionConfigurando === "numerica"
+                        ? "#2563eb"
+                        : modoOscuro
+                          ? "#475569"
+                          : "#cbd5e1",
+                    backgroundColor:
+                      tipoEvaluacionConfigurando === "numerica"
+                        ? modoOscuro
+                          ? "#172554"
+                          : "#eff6ff"
+                        : modoOscuro
+                          ? "#1e293b"
+                          : "#ffffff",
+                    borderRadius: 12,
+                    justifyContent: "center",
+                    paddingHorizontal: 13,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        tipoEvaluacionConfigurando === "numerica"
+                          ? modoOscuro
+                            ? "#93c5fd"
+                            : "#1d4ed8"
+                          : modoOscuro
+                            ? "#e2e8f0"
+                            : "#334155",
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Números
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                    }}
+                  >
+                    Ejemplo: de 0 a 10, de 0 a 100, etc.
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setTipoEvaluacionConfigurando("rubrica")}
+                  disabled={guardandoConfiguracion || eliminandoTrabajo}
+                  style={{
+                    marginTop: 8,
+                    minHeight: 48,
+                    borderWidth: 1,
+                    borderColor:
+                      tipoEvaluacionConfigurando === "rubrica"
+                        ? "#2563eb"
+                        : modoOscuro
+                          ? "#475569"
+                          : "#cbd5e1",
+                    backgroundColor:
+                      tipoEvaluacionConfigurando === "rubrica"
+                        ? modoOscuro
+                          ? "#172554"
+                          : "#eff6ff"
+                        : modoOscuro
+                          ? "#1e293b"
+                          : "#ffffff",
+                    borderRadius: 12,
+                    justifyContent: "center",
+                    paddingHorizontal: 13,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        tipoEvaluacionConfigurando === "rubrica"
+                          ? modoOscuro
+                            ? "#93c5fd"
+                            : "#1d4ed8"
+                          : modoOscuro
+                            ? "#e2e8f0"
+                            : "#334155",
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Rúbrica
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                    }}
+                  >
+                    Insuficiente, suficiente, excelente o los rubros que tú
+                    definas.
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() =>
+                    setTipoEvaluacionConfigurando("verdadero_falso")
+                  }
+                  disabled={guardandoConfiguracion || eliminandoTrabajo}
+                  style={{
+                    marginTop: 8,
+                    minHeight: 48,
+                    borderWidth: 1,
+                    borderColor:
+                      tipoEvaluacionConfigurando === "verdadero_falso"
+                        ? "#2563eb"
+                        : modoOscuro
+                          ? "#475569"
+                          : "#cbd5e1",
+                    backgroundColor:
+                      tipoEvaluacionConfigurando === "verdadero_falso"
+                        ? modoOscuro
+                          ? "#172554"
+                          : "#eff6ff"
+                        : modoOscuro
+                          ? "#1e293b"
+                          : "#ffffff",
+                    borderRadius: 12,
+                    justifyContent: "center",
+                    paddingHorizontal: 13,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        tipoEvaluacionConfigurando === "verdadero_falso"
+                          ? modoOscuro
+                            ? "#93c5fd"
+                            : "#1d4ed8"
+                          : modoOscuro
+                            ? "#e2e8f0"
+                            : "#334155",
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Verdadero / Falso
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                    }}
+                  >
+                    Verdadero = entregó el trabajo. Falso = no lo entregó.
+                  </Text>
+                </Pressable>
+              </View>
+
+              {tipoEvaluacionConfigurando === "numerica" ? (
+                <Text
+                  style={{
+                    marginTop: 10,
+                    color: modoOscuro ? "#94a3b8" : "#64748b",
+                    fontSize: 12,
+                    lineHeight: 17,
+                  }}
+                >
+                  En cada alumno podrás escribir únicamente una calificación
+                  comprendida entre la mínima y la máxima configuradas.
+                </Text>
+              ) : null}
+
+              {tipoEvaluacionConfigurando === "verdadero_falso" ? (
+                <Text
+                  style={{
+                    marginTop: 10,
+                    color: modoOscuro ? "#94a3b8" : "#64748b",
+                    fontSize: 12,
+                    lineHeight: 17,
+                  }}
+                >
+                  Verdadero asignará la calificación más alta configurada y
+                  Falso asignará la calificación más baja.
+                </Text>
+              ) : null}
+
+              {tipoEvaluacionConfigurando === "rubrica" ? (
+                <View style={{ marginTop: 16 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: modoOscuro ? "#e2e8f0" : "#334155",
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Rubros de evaluación
+                    </Text>
+
+                    <Pressable
+                      onPress={agregarRubro}
+                      disabled={guardandoConfiguracion || eliminandoTrabajo}
+                      style={{
+                        minHeight: 38,
+                        borderRadius: 10,
+                        backgroundColor: "#2563eb",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingHorizontal: 12,
+                        opacity:
+                          guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                      }}
+                    >
+                      <FontAwesomeIcon
+                        icon={faPlus}
+                        size={13}
+                        color="#ffffff"
+                      />
+                      <Text
+                        style={{
+                          marginLeft: 6,
+                          color: "#ffffff",
+                          fontSize: 13,
+                          fontWeight: "700",
+                        }}
+                      >
+                        Agregar rubro
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <Text
+                    style={{
+                      marginTop: 7,
+                      color: modoOscuro ? "#94a3b8" : "#64748b",
+                      fontSize: 12,
+                      lineHeight: 17,
+                    }}
+                  >
+                    Puedes cambiar el nombre y puntaje de cada rubro, agregar
+                    nuevos o eliminar los que no necesites.
+                  </Text>
+
+                  {rubrosTrabajoConfigurando.map((rubro, indice) => (
+                    <View
+                      key={rubro.id}
+                      style={{
+                        marginTop: 10,
+                        borderWidth: 1,
+                        borderColor: modoOscuro ? "#334155" : "#e2e8f0",
+                        borderRadius: 12,
+                        padding: 10,
+                        backgroundColor: modoOscuro ? "#1e293b" : "#f8fafc",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          marginBottom: 7,
+                          color: modoOscuro ? "#94a3b8" : "#64748b",
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        Rubro {indice + 1}
+                      </Text>
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                        }}
+                      >
+                        <TextInput
+                          value={rubro.nombre}
+                          onChangeText={(texto) =>
+                            editarNombreRubro(rubro.id, texto)
+                          }
+                          placeholder="Nombre del rubro"
+                          placeholderTextColor={
+                            modoOscuro ? "#64748b" : "#94a3b8"
+                          }
+                          editable={
+                            !guardandoConfiguracion && !eliminandoTrabajo
+                          }
+                          style={{
+                            flex: 1,
+                            minHeight: 44,
+                            borderWidth: 1,
+                            borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                            borderRadius: 10,
+                            paddingHorizontal: 10,
+                            color: modoOscuro ? "#ffffff" : "#000000",
+                            backgroundColor: modoOscuro ? "#0f172a" : "#ffffff",
+                            fontSize: 14,
+                          }}
+                        />
+
+                        <TextInput
+                          value={rubro.puntaje}
+                          onChangeText={(texto) =>
+                            editarPuntajeRubro(rubro.id, texto)
+                          }
+                          placeholder="Puntos"
+                          placeholderTextColor={
+                            modoOscuro ? "#64748b" : "#94a3b8"
+                          }
+                          keyboardType="decimal-pad"
+                          autoCorrect={false}
+                          editable={
+                            !guardandoConfiguracion && !eliminandoTrabajo
+                          }
+                          selectTextOnFocus
+                          maxLength={10}
+                          style={{
+                            width: 82,
+                            minHeight: 44,
+                            marginLeft: 7,
+                            borderWidth: 1,
+                            borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                            borderRadius: 10,
+                            paddingHorizontal: 8,
+                            textAlign: "center",
+                            color: modoOscuro ? "#ffffff" : "#000000",
+                            backgroundColor: modoOscuro ? "#0f172a" : "#ffffff",
+                            fontSize: 14,
+                          }}
+                        />
+
+                        <Pressable
+                          onPress={() => eliminarRubro(rubro.id)}
+                          disabled={guardandoConfiguracion || eliminandoTrabajo}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Eliminar rubro ${rubro.nombre}`}
+                          style={{
+                            width: 42,
+                            height: 42,
+                            marginLeft: 7,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: modoOscuro ? "#7f1d1d" : "#fecaca",
+                            backgroundColor: modoOscuro ? "#450a0a" : "#fef2f2",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            opacity:
+                              guardandoConfiguracion || eliminandoTrabajo
+                                ? 0.6
+                                : 1,
+                          }}
+                        >
+                          <FontAwesomeIcon
+                            icon={faTrash}
+                            size={15}
+                            color="#dc2626"
+                          />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+
+                  {rubrosTrabajoConfigurando.length === 0 ? (
+                    <Text
+                      style={{
+                        marginTop: 10,
+                        color: modoOscuro ? "#94a3b8" : "#64748b",
+                        fontSize: 12,
+                        textAlign: "center",
+                      }}
+                    >
+                      No hay rubros. Presiona “Agregar rubro”.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {/* Eliminar trabajo */}
+              <Pressable
+                onPress={confirmarEliminarTrabajo}
+                disabled={guardandoConfiguracion || eliminandoTrabajo}
+                style={{
+                  marginTop: 22,
+                  minHeight: 46,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: modoOscuro ? "#7f1d1d" : "#fecaca",
+                  backgroundColor: modoOscuro ? "#450a0a" : "#fef2f2",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity:
+                    guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                }}
+              >
+                {eliminandoTrabajo ? (
+                  <ActivityIndicator size="small" color="#dc2626" />
+                ) : (
+                  <FontAwesomeIcon icon={faTrash} size={16} color="#dc2626" />
+                )}
+
+                <Text
+                  style={{
+                    marginLeft: 8,
+                    color: "#dc2626",
+                    fontSize: 15,
+                    fontWeight: "700",
+                  }}
+                >
+                  Eliminar trabajo
+                </Text>
+              </Pressable>
+
+              <View
+                style={{
+                  marginTop: 18,
+                  flexDirection: "row",
+                }}
+              >
+                <Pressable
+                  onPress={cerrarConfiguracionTrabajo}
+                  disabled={guardandoConfiguracion || eliminandoTrabajo}
+                  style={{
+                    flex: 1,
+                    minHeight: 46,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 7,
+                    opacity:
+                      guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: modoOscuro ? "#e2e8f0" : "#334155",
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Cancelar
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => void guardarConfiguracionTrabajo()}
+                  disabled={guardandoConfiguracion || eliminandoTrabajo}
+                  style={{
+                    flex: 1,
+                    minHeight: 46,
+                    borderRadius: 12,
+                    backgroundColor: "#2563eb",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginLeft: 7,
+                    opacity:
+                      guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
+                  }}
+                >
+                  {guardandoConfiguracion ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text
+                      style={{
+                        color: "#ffffff",
+                        fontSize: 15,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Guardar
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Selector de calificación para rúbrica o Verdadero/Falso */}
+      <Modal
+        visible={seleccionCalificacion !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setSeleccionCalificacion(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            paddingHorizontal: 22,
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+          }}
+        >
+          <View
+            style={{
+              maxHeight: "85%",
               backgroundColor: modoOscuro ? "#0f172a" : "#ffffff",
               borderRadius: 20,
               padding: 20,
@@ -1153,193 +2412,200 @@ export default function PantallaCalificaciones() {
             <Text
               style={{
                 color: modoOscuro ? "#ffffff" : "#0f172a",
-                fontSize: 21,
+                fontSize: 20,
                 fontWeight: "700",
                 textAlign: "center",
               }}
             >
-              Configurar trabajo
+              {seleccionCalificacion?.trabajo.nombre ?? "Calificación"}
             </Text>
 
             <Text
               style={{
-                marginTop: 20,
-                marginBottom: 7,
-                color: modoOscuro ? "#e2e8f0" : "#334155",
-                fontSize: 14,
-                fontWeight: "600",
-              }}
-            >
-              Nombre del trabajo
-            </Text>
-
-            <TextInput
-              value={nombreTrabajoConfigurando}
-              onChangeText={setNombreTrabajoConfigurando}
-              placeholder="Nombre del trabajo o proyecto"
-              placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
-              autoCapitalize="sentences"
-              autoCorrect
-              editable={!guardandoConfiguracion && !eliminandoTrabajo}
-              selectTextOnFocus
-              style={{
-                minHeight: 48,
-                borderWidth: 1,
-                borderColor: modoOscuro ? "#475569" : "#cbd5e1",
-                borderRadius: 12,
-                paddingHorizontal: 13,
-                paddingVertical: 10,
-                color: modoOscuro ? "#ffffff" : "#000000",
-                backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
-                fontSize: 16,
-              }}
-            />
-
-            <Text
-              style={{
-                marginTop: 17,
-                marginBottom: 7,
-                color: modoOscuro ? "#e2e8f0" : "#334155",
-                fontSize: 14,
-                fontWeight: "600",
-              }}
-            >
-              Valor del trabajo (%)
-            </Text>
-
-            <TextInput
-              value={valorTrabajoConfigurando}
-              onChangeText={setValorTrabajoConfigurando}
-              placeholder="Ejemplo: 20"
-              placeholderTextColor={modoOscuro ? "#64748b" : "#94a3b8"}
-              keyboardType="decimal-pad"
-              autoCorrect={false}
-              editable={!guardandoConfiguracion && !eliminandoTrabajo}
-              selectTextOnFocus
-              maxLength={6}
-              style={{
-                minHeight: 48,
-                borderWidth: 1,
-                borderColor: modoOscuro ? "#475569" : "#cbd5e1",
-                borderRadius: 12,
-                paddingHorizontal: 13,
-                paddingVertical: 10,
-                color: modoOscuro ? "#ffffff" : "#000000",
-                backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
-                fontSize: 16,
-              }}
-            />
-
-            <Text
-              style={{
-                marginTop: 8,
+                marginTop: 5,
                 color: modoOscuro ? "#94a3b8" : "#64748b",
-                fontSize: 12,
-                lineHeight: 17,
+                fontSize: 13,
+                textAlign: "center",
               }}
             >
-              El valor debe estar entre 0 y 100. Este porcentaje se utiliza
-              automáticamente para calcular la columna Total.
+              {seleccionCalificacion?.alumno.nombre ?? ""}
             </Text>
 
-            {/* Eliminar trabajo */}
-            <Pressable
-              onPress={confirmarEliminarTrabajo}
-              disabled={guardandoConfiguracion || eliminandoTrabajo}
-              style={{
-                marginTop: 22,
-                minHeight: 46,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: modoOscuro ? "#7f1d1d" : "#fecaca",
-                backgroundColor: modoOscuro ? "#450a0a" : "#fef2f2",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
-              }}
-            >
-              {eliminandoTrabajo ? (
-                <ActivityIndicator size="small" color="#dc2626" />
-              ) : (
-                <FontAwesomeIcon icon={faTrash} size={16} color="#dc2626" />
-              )}
-
-              <Text
-                style={{
-                  marginLeft: 8,
-                  color: "#dc2626",
-                  fontSize: 15,
-                  fontWeight: "700",
-                }}
+            {seleccionCalificacion?.trabajo.tipo_evaluacion === "rubrica" ? (
+              <ScrollView
+                style={{ marginTop: 16 }}
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
               >
-                Eliminar trabajo
-              </Text>
-            </Pressable>
+                {obtenerRubricaTrabajo(seleccionCalificacion.trabajo).map(
+                  (rubro) => (
+                    <Pressable
+                      key={rubro.id}
+                      onPress={() => void seleccionarRubro(rubro)}
+                      style={{
+                        minHeight: 52,
+                        marginBottom: 9,
+                        borderWidth: 1,
+                        borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                        borderRadius: 12,
+                        backgroundColor: modoOscuro ? "#1e293b" : "#ffffff",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingHorizontal: 14,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: modoOscuro ? "#ffffff" : "#0f172a",
+                          fontSize: 15,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {rubro.nombre}
+                      </Text>
 
-            <View
-              style={{
-                marginTop: 18,
-                flexDirection: "row",
-              }}
-            >
-              <Pressable
-                onPress={cerrarConfiguracionTrabajo}
-                disabled={guardandoConfiguracion || eliminandoTrabajo}
-                style={{
-                  flex: 1,
-                  minHeight: 46,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: modoOscuro ? "#475569" : "#cbd5e1",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 7,
-                  opacity:
-                    guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
-                }}
-              >
-                <Text
+                      <Text
+                        style={{
+                          marginLeft: 12,
+                          color: modoOscuro ? "#93c5fd" : "#2563eb",
+                          fontSize: 15,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatearValor(rubro.puntaje)}
+                      </Text>
+                    </Pressable>
+                  ),
+                )}
+              </ScrollView>
+            ) : null}
+
+            {seleccionCalificacion?.trabajo.tipo_evaluacion ===
+            "verdadero_falso" ? (
+              <View style={{ marginTop: 16 }}>
+                <Pressable
+                  onPress={() => void seleccionarVerdaderoFalso("verdadero")}
                   style={{
-                    color: modoOscuro ? "#e2e8f0" : "#334155",
-                    fontSize: 15,
-                    fontWeight: "700",
+                    minHeight: 54,
+                    borderWidth: 1,
+                    borderColor: modoOscuro ? "#166534" : "#bbf7d0",
+                    borderRadius: 12,
+                    backgroundColor: modoOscuro ? "#052e16" : "#f0fdf4",
+                    justifyContent: "center",
+                    paddingHorizontal: 14,
                   }}
                 >
-                  Cancelar
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => void guardarConfiguracionTrabajo()}
-                disabled={guardandoConfiguracion || eliminandoTrabajo}
-                style={{
-                  flex: 1,
-                  minHeight: 46,
-                  borderRadius: 12,
-                  backgroundColor: "#2563eb",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginLeft: 7,
-                  opacity:
-                    guardandoConfiguracion || eliminandoTrabajo ? 0.6 : 1,
-                }}
-              >
-                {guardandoConfiguracion ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
                   <Text
                     style={{
-                      color: "#ffffff",
-                      fontSize: 15,
+                      color: modoOscuro ? "#86efac" : "#15803d",
+                      fontSize: 16,
                       fontWeight: "700",
                     }}
                   >
-                    Guardar
+                    Verdadero · Entregó
                   </Text>
-                )}
-              </Pressable>
-            </View>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      color: modoOscuro ? "#86efac" : "#166534",
+                      fontSize: 12,
+                    }}
+                  >
+                    Puntaje:{" "}
+                    {formatearValor(
+                      Number(
+                        seleccionCalificacion.trabajo.calificacion_maxima ?? 10,
+                      ),
+                    )}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => void seleccionarVerdaderoFalso("falso")}
+                  style={{
+                    marginTop: 10,
+                    minHeight: 54,
+                    borderWidth: 1,
+                    borderColor: modoOscuro ? "#7f1d1d" : "#fecaca",
+                    borderRadius: 12,
+                    backgroundColor: modoOscuro ? "#450a0a" : "#fef2f2",
+                    justifyContent: "center",
+                    paddingHorizontal: 14,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: modoOscuro ? "#fca5a5" : "#dc2626",
+                      fontSize: 16,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Falso · No entregó
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      color: modoOscuro ? "#fca5a5" : "#991b1b",
+                      fontSize: 12,
+                    }}
+                  >
+                    Puntaje:{" "}
+                    {formatearValor(
+                      Number(
+                        seleccionCalificacion.trabajo.calificacion_minima ?? 0,
+                      ),
+                    )}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Pressable
+              onPress={() => void limpiarCalificacionSeleccionada()}
+              style={{
+                marginTop: 14,
+                minHeight: 44,
+                borderWidth: 1,
+                borderColor: modoOscuro ? "#475569" : "#cbd5e1",
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: modoOscuro ? "#e2e8f0" : "#334155",
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                Quitar calificación
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setSeleccionCalificacion(null)}
+              style={{
+                marginTop: 10,
+                minHeight: 44,
+                borderRadius: 12,
+                backgroundColor: "#2563eb",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                Cerrar
+              </Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
